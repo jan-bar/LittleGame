@@ -13,6 +13,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 func main() {
@@ -255,12 +256,12 @@ func (g *Gomoku) Update() error {
 	}
 
 	var sendAI bool
-	if ebiten.IsKeyPressed(ebiten.KeyB) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
 		g.reset() // 按下B键重新开始游戏,电脑先手,正中央下黑棋
 		g.put(boardSize/2, boardSize/2, comImgFlag)
-	} else if ebiten.IsKeyPressed(ebiten.KeyW) {
+	} else if inpututil.IsKeyJustPressed(ebiten.KeyW) {
 		g.reset() // 按下W键重新开始游戏,玩家先手
-	} else if g.status == allNoneFlag && ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+	} else if g.status == allNoneFlag && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		x, y := ebiten.CursorPosition()
 		x, y = (x-9)/40, (y-9)/40 // 计算鼠标点击位置,此位置没有落子时才响应
 		if x >= 0 && y >= 0 && x < boardSize && y < boardSize && g.board[x][y] == allNoneFlag {

@@ -12,4 +12,6 @@ set GOARCH=amd64
 go build -ldflags "-s -w" -trimpath -o ..\test.exe
 
 cd %pwd%
-go build -ldflags "-s -w" -trimpath -o httpServer.exe
+if not exist httpServer.exe (
+  go build -ldflags "-s -w" -trimpath -o httpServer.exe
+)
