@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"sync/atomic"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
@@ -15,7 +16,7 @@ https://github.com/Capricornwqh/ChineseChess
 */
 
 func main() {
-	game := &chessGame{}
+	game := &chessGame{aiPoint: make(chan []int, 1)}
 	err := game.loadResources()
 	if err != nil {
 		log.Fatal(err)
@@ -38,7 +39,12 @@ type (
 		// 棋盘数据
 		board [boardX][boardY]uint8
 
-		gameOver bool // 是否游戏结束
+		// 参照 aiOff, aiOn, aiThink
+		isAI atomic.Uint32
+		// ai 走黑棋时某棋子从([0],[1])移动到([2],[3])
+		aiPoint chan []int
+		// 是否游戏结束
+		gameOver bool
 
 		// 选中的格子,上一步棋位置
 		selected, lastXY [2]int
@@ -52,6 +58,33 @@ func (g *chessGame) Layout(_, _ int) (int, int) {
 }
 
 func (g *chessGame) Update() error {
+	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		if !g.isAI.CompareAndSwap(aiOff, aiOn) {
+			g.isAI.Store(aiOff) // 按空格键切换 ai对战 / 人人对战
+		}
+		g.reset()
+	}
+
+	switch g.isAI.Load() {
+	case aiThink:
+		return nil // ai 等待黑棋结果,停止其他任何操作
+	case aiOn:
+		if !g.redPlayer {
+			select {
+			case p, ok := <-g.aiPoint:
+				if ok { // 模拟黑棋移动某个棋子
+					err := g.clickSquare(p[0], p[1])
+					if err == nil {
+						err = g.clickSquare(p[2], p[3])
+					}
+					return err
+				}
+			default:
+			}
+			return nil // ai 正在玩黑棋,停止其他任何操作
+		}
+	}
+
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		if g.gameOver {
 			g.reset()
@@ -67,33 +100,6 @@ func (g *chessGame) Update() error {
 		}
 	}
 	return nil
-}
-
-func (g *chessGame) clickSquare(x, y int) (err error) {
-	if qz := g.board[x][y]; qz > 0 {
-		if isRed(qz) == g.redPlayer {
-			err = g.playAudio(musicSelect)
-			if err != nil {
-				return
-			}
-			// 点击 g.redPlayer 方棋子,等于切换选中棋子
-			g.selected[0], g.selected[1] = x, y
-			g.lastXY = g.selected
-		} else {
-			// 点击 g.redPlayer 对方棋子,尝试吃掉该棋子
-			err = g.stepNext(x, y, musicEat)
-			if err != nil {
-				return
-			}
-		}
-	} else {
-		// 点击空白位置,尝试走到该位置
-		err = g.stepNext(x, y, musicPut)
-		if err != nil {
-			return
-		}
-	}
-	return
 }
 
 func (g *chessGame) Draw(screen *ebiten.Image) {
@@ -131,10 +137,52 @@ func (g *chessGame) Draw(screen *ebiten.Image) {
 		}
 	}
 
+	const infoX, infoY = 245, 270 // 楚河汉界中间位置显示提示信息
 	if g.gameOver {
-		ebitenutil.DebugPrintAt(screen, "You Win", 220, 270)
-		ebitenutil.DebugPrintAt(screen, "Click Mouse to restart", 180, 290)
+		winMsg := "Black Win"
+		if g.redPlayer {
+			winMsg = "Red Win"
+		}
+		ebitenutil.DebugPrintAt(screen, winMsg, infoX, infoY)
+		ebitenutil.DebugPrintAt(screen, "Click Mouse to restart", infoX-40, infoY+20)
+	} else {
+		switch g.isAI.Load() {
+		case aiOff:
+			ebitenutil.DebugPrintAt(screen, "AI OFF", infoX, infoY)
+		case aiOn:
+			ebitenutil.DebugPrintAt(screen, "AI ON", infoX, infoY)
+		case aiThink:
+			ebitenutil.DebugPrintAt(screen, "AI THINK", infoX, infoY)
+		}
+		ebitenutil.DebugPrintAt(screen, "Key Space to switch", infoX-40, infoY+20)
 	}
+}
+
+func (g *chessGame) clickSquare(x, y int) (err error) {
+	if qz := g.board[x][y]; qz > 0 {
+		if isRed(qz) == g.redPlayer {
+			err = g.playAudio(musicSelect)
+			if err != nil {
+				return
+			}
+			// 点击 g.redPlayer 方棋子,等于切换选中棋子
+			g.selected[0], g.selected[1] = x, y
+			g.lastXY = g.selected
+		} else {
+			// 点击 g.redPlayer 对方棋子,尝试吃掉该棋子
+			err = g.stepNext(x, y, musicEat)
+			if err != nil {
+				return
+			}
+		}
+	} else {
+		// 点击空白位置,尝试走到该位置
+		err = g.stepNext(x, y, musicPut)
+		if err != nil {
+			return
+		}
+	}
+	return
 }
 
 func isRed(p uint8) bool { return p >= imgRedShuai && p <= imgRedBing }
@@ -265,21 +313,25 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 		if g.isJiang(g.redPlayer) {
 			// 当前将军,敌方没有任何棋子阻止将军,则胜利
 			if g.isWin(g.redPlayer) {
-				err = g.playAudio(musicGameWin)
-				if err != nil {
-					return
+				winMusic := musicGameWin
+				if !g.redPlayer && g.isAI.Load() == aiOn {
+					// 黑棋赢了,启用ai则播放玩家失败音乐
+					winMusic = musicGameLose
 				}
-
+				err = g.playAudio(winMusic)
 				g.gameOver = true
-			} else {
-				// 没有赢,因此只播放一下将军
-				err = g.playAudio(musicJiang)
-				if err != nil {
-					return
-				}
+				return // 赢了直接返回
+			}
+			// 没有赢,因此只播放一下将军
+			err = g.playAudio(musicJiang)
+			if err != nil {
+				return
 			}
 		}
 
+		if g.redPlayer && g.isAI.Load() == aiOn {
+			go g.ai() // 红方走子后,启动协程执行ai走黑棋
+		}
 		g.redPlayer = !g.redPlayer // 切换角色
 	}
 	return
@@ -337,7 +389,7 @@ func (g *chessGame) canNext(x0, y0, x1, y1 int) bool {
 			}
 			for min < max {
 				if g.board[x0][min] != 0 {
-					return false
+					return false // 中间有子直接返回
 				}
 				min++
 			}
@@ -349,7 +401,7 @@ func (g *chessGame) canNext(x0, y0, x1, y1 int) bool {
 			}
 			for min < max {
 				if g.board[min][y0] != 0 {
-					return false
+					return false // 中间有子直接返回
 				}
 				min++
 			}
@@ -358,43 +410,37 @@ func (g *chessGame) canNext(x0, y0, x1, y1 int) bool {
 		return false
 	case imgRedPao, imgBlackPao: // 红黑炮规则一样
 		if x0 == x1 {
-			min, max := y0+1, y1
+			min, max, cnt := y0+1, y1, 0
 			if min > max {
 				min, max = y1+1, y0
 			}
-			cnt := 0
 			for min < max {
 				if g.board[x0][min] != 0 {
-					cnt++
+					if cnt++; cnt > 1 {
+						return false // 中间有2子直接返回
+					}
 				}
 				min++
 			}
-			if cnt == 0 && qz1 == 0 {
-				return true // 中间无棋子,且落点是空位
+			if (cnt == 0 && qz1 == 0) || (cnt == 1 && qz1 > 0) {
+				return true // 中间无棋子,落点为空位 或 中间有1子,落点敌方子
 			}
-			if cnt == 1 && qz1 > 0 {
-				return true // 中间只有一个棋子,且落点是敌人棋子
-			}
-			return false
 		} else if y0 == y1 {
-			min, max := x0+1, x1
+			min, max, cnt := x0+1, x1, 0
 			if min > max {
 				min, max = x1+1, x0
 			}
-			cnt := 0
 			for min < max {
 				if g.board[min][y0] != 0 {
-					cnt++
+					if cnt++; cnt > 1 {
+						return false // 中间有2子直接返回
+					}
 				}
 				min++
 			}
-			if cnt == 0 && qz1 == 0 {
-				return true // 中间无棋子,且落点是空位
+			if (cnt == 0 && qz1 == 0) || (cnt == 1 && qz1 > 0) {
+				return true // 中间无棋子,落点为空位 或 中间有1子,落点敌方子
 			}
-			if cnt == 1 && qz1 > 0 {
-				return true // 中间只有一个棋子,且落点是敌人棋子
-			}
-			return false
 		}
 		return false
 	case imgRedBing:
@@ -442,4 +488,13 @@ func abs(a, b int) int {
 		return a
 	}
 	return -a
+}
+
+// -----------------------------------------------------------------------------
+func (g *chessGame) ai() {
+	g.isAI.Store(aiThink)    // 设置状态,ai思考中
+	defer g.isAI.Store(aiOn) // 设置状态,ai思考结束
+
+	// todo ai
+	g.aiPoint <- []int{2, 1, 9, 1}
 }

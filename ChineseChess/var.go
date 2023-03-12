@@ -57,3 +57,9 @@ var boardStart = [boardX][boardY]uint8{
 	{0, 0, 0, 0, 0, 0, 0, 0, 0},
 	{imgRedJu, imgRedMa, imgRedXiang, imgRedShi, imgRedShuai, imgRedShi, imgRedXiang, imgRedMa, imgRedJu},
 }
+
+const (
+	aiOff   = iota // 禁用ai
+	aiOn           // 启用ai
+	aiThink        // ai正在思考
+)
