@@ -2,23 +2,23 @@ package main
 
 //goland:noinspection SpellCheckingInspection
 const (
-	imgChessBoard = iota // 棋盘
-	imgSelect            // 选中
-	imgRedShuai          // 红帅
-	imgRedShi            // 红士
-	imgRedXiang          // 红相
-	imgRedMa             // 红马
-	imgRedJu             // 红车
-	imgRedPao            // 红炮
-	imgRedBing           // 红兵
-	imgBlackJiang        // 黑将
-	imgBlackShi          // 黑士
-	imgBlackXiang        // 黑相
-	imgBlackMa           // 黑马
-	imgBlackJu           // 黑车
-	imgBlackPao          // 黑炮
-	imgBlackBing         // 黑兵
-	imgLength            // 图片总长度
+	imgChessBoard uint8 = iota // 棋盘
+	imgSelect                  // 选中
+	imgRedShuai                // 红帅
+	imgRedShi                  // 红士
+	imgRedXiang                // 红相
+	imgRedMa                   // 红马
+	imgRedJu                   // 红车
+	imgRedPao                  // 红炮
+	imgRedBing                 // 红兵
+	imgBlackJiang              // 黑将
+	imgBlackShi                // 黑士
+	imgBlackXiang              // 黑相
+	imgBlackMa                 // 黑马
+	imgBlackJu                 // 黑车
+	imgBlackPao                // 黑炮
+	imgBlackBing               // 黑兵
+	imgLength                  // 图片总长度
 )
 
 const (
@@ -42,10 +42,6 @@ const (
 const (
 	boardX, boardY = 10, 9 // 棋盘的x,y格子数
 	topX, topY     = 8, 13 // 棋盘左上角起始x,y
-
-	chessMask = 0x3f // 棋子对应值掩码
-	chessSel  = 0x80 // 该bit表示选中状态
-	chessRed  = 0x40 // 该bit表示该棋子是红方
 )
 
 // 初始棋局
@@ -56,8 +52,8 @@ var boardStart = [boardX][boardY]uint8{
 	{imgBlackBing, 0, imgBlackBing, 0, imgBlackBing, 0, imgBlackBing, 0, imgBlackBing},
 	{0, 0, 0, 0, 0, 0, 0, 0, 0}, // 楚河
 	{0, 0, 0, 0, 0, 0, 0, 0, 0}, // 汉界
-	{imgRedBing | chessRed, 0, imgRedBing | chessRed, 0, imgRedBing | chessRed, 0, imgRedBing | chessRed, 0, imgRedBing | chessRed},
-	{0, imgRedPao | chessRed, 0, 0, 0, 0, 0, imgRedPao | chessRed, 0},
+	{imgRedBing, 0, imgRedBing, 0, imgRedBing, 0, imgRedBing, 0, imgRedBing},
+	{0, imgRedPao, 0, 0, 0, 0, 0, imgRedPao, 0},
 	{0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{imgRedJu | chessRed, imgRedMa | chessRed, imgRedXiang | chessRed, imgRedShi | chessRed, imgRedShuai | chessRed, imgRedShi | chessRed, imgRedXiang | chessRed, imgRedMa | chessRed, imgRedJu | chessRed},
+	{imgRedJu, imgRedMa, imgRedXiang, imgRedShi, imgRedShuai, imgRedShi, imgRedXiang, imgRedMa, imgRedJu},
 }

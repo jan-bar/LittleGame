@@ -5,6 +5,7 @@ import (
 	"bytes"
 	_ "embed"
 	"image/png"
+	"io"
 	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -18,7 +19,7 @@ var resources []byte
 func (g *chessGame) loadResources() error {
 	var (
 		data     = bytes.NewReader(resources)
-		audioCtx = audio.NewContext(4800)
+		audioCtx = audio.NewContext(48000)
 	)
 
 	zr, err := zip.NewReader(data, data.Size())
@@ -27,7 +28,7 @@ func (g *chessGame) loadResources() error {
 	}
 
 	//goland:noinspection SpellCheckingInspection 文件名和资源对应关系
-	resMap := map[string]int{
+	resMap := map[string]uint8{
 		"ChessBoard.png": imgChessBoard,
 		"Select.png":     imgSelect,
 		"RedShuai.png":   imgRedShuai,
@@ -58,29 +59,38 @@ func (g *chessGame) loadResources() error {
 			continue
 		}
 
-		fr, err := f.Open()
+		err = func() error {
+			fr, err := f.Open()
+			if err != nil {
+				return err
+			}
+			//goland:noinspection GoUnhandledErrorResult
+			defer fr.Close()
+
+			switch filepath.Ext(f.Name) {
+			case ".png":
+				img, err := png.Decode(fr)
+				if err != nil {
+					return err
+				}
+				g.images[i] = ebiten.NewImageFromImage(img)
+			case ".wav":
+				wr, err := wav.DecodeWithSampleRate(audioCtx.SampleRate(), fr)
+				if err != nil {
+					return err
+				}
+				wd, err := io.ReadAll(wr)
+				if err != nil {
+					return err
+				}
+				g.audios[i] = audioCtx.NewPlayerFromBytes(wd)
+			case ".dat":
+				// todo 开局库解析
+			}
+			return nil
+		}()
 		if err != nil {
 			return err
-		}
-
-		switch filepath.Ext(f.Name) {
-		case ".png":
-			img, e := png.Decode(fr)
-			if e == nil {
-				g.images[i] = ebiten.NewImageFromImage(img)
-			}
-			err = e // 避免阴影变量
-		case ".wav":
-			ado, e := wav.DecodeWithSampleRate(audioCtx.SampleRate(), fr)
-			if e == nil {
-				g.audios[i], e = audioCtx.NewPlayer(ado)
-			}
-			err = e // 避免阴影变量
-		case ".dat":
-			// todo 开局库解析
-		}
-		if _ = fr.Close(); err != nil {
-			return err // fr.Close() 必须执行
 		}
 	}
 	return nil
