@@ -36,8 +36,8 @@ type (
 		images [imgLength]*ebiten.Image   // 所需图片资源
 		audios [musicLength]*audio.Player // 所需音频资源
 
-		// 棋盘数据
-		board [boardX][boardY]uint8
+		// board: 棋盘数据,aiBoard: ai计算时用到的棋盘
+		board, aiBoard [boardX][boardY]uint8
 
 		// 参照 aiOff, aiOn, aiThink
 		isAI atomic.Uint32
@@ -59,10 +59,14 @@ func (g *chessGame) Layout(_, _ int) (int, int) {
 
 func (g *chessGame) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-		if !g.isAI.CompareAndSwap(aiOff, aiOn) {
-			g.isAI.Store(aiOff) // 按空格键切换 ai对战 / 人人对战
-		}
+		if g.selected[0] == -1 {
+			// 在初始化时,按空格键切换 ai对战 / 人人对战
+			if !g.isAI.CompareAndSwap(aiOff, aiOn) {
+				g.isAI.Store(aiOff)
+			}
+		} // else {} 玩到中途按空格只会重新开始,不切换模式
 		g.reset()
+		return nil
 	}
 
 	switch g.isAI.Load() {
@@ -109,13 +113,12 @@ func (g *chessGame) Draw(screen *ebiten.Image) {
 	var (
 		xy [2]int // 用于和 g.selected,g.lastXY 进行比较
 
-		geoMReset = func(i, j, off int) (xp, yp float64) {
+		geoMReset = func(i, j, off int) {
 			op.GeoM.Reset()
 			// 图像向右是X,向下是Y,但是数组向下是i,向右是j
 			// [8,13]是棋盘左上角起始点,每个棋子长宽squareSize
-			xp, yp = float64(j*squareSize+topX), float64(i*squareSize+topY+off)
+			xp, yp := float64(j*squareSize+topX), float64(i*squareSize+topY+off)
 			op.GeoM.Translate(xp, yp)
-			return
 		}
 	)
 	for xy[0] = 0; xy[0] < boardX; xy[0]++ {
@@ -137,25 +140,28 @@ func (g *chessGame) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	const infoX, infoY = 245, 270 // 楚河汉界中间位置显示提示信息
+	var show0, show1 string
 	if g.gameOver {
-		winMsg := "Black Win"
 		if g.redPlayer {
-			winMsg = "Red Win"
+			show0 = "Red Win"
+		} else {
+			show0 = "Black Win"
 		}
-		ebitenutil.DebugPrintAt(screen, winMsg, infoX, infoY)
-		ebitenutil.DebugPrintAt(screen, "Click Mouse to restart", infoX-40, infoY+20)
+		show1 = "Click Mouse To Restart"
 	} else {
 		switch g.isAI.Load() {
 		case aiOff:
-			ebitenutil.DebugPrintAt(screen, "AI OFF", infoX, infoY)
+			show0 = "AI OFF"
 		case aiOn:
-			ebitenutil.DebugPrintAt(screen, "AI ON", infoX, infoY)
+			show0 = "AI ON"
 		case aiThink:
-			ebitenutil.DebugPrintAt(screen, "AI THINK", infoX, infoY)
+			show0 = "AI THINK"
 		}
-		ebitenutil.DebugPrintAt(screen, "Key Space to switch", infoX-40, infoY+20)
+		show1 = "Key Space To Switch And Restart"
 	}
+	const infoX, infoY = 245, 270 // 楚河汉界中间位置显示提示信息
+	ebitenutil.DebugPrintAt(screen, show0, infoX, infoY)
+	ebitenutil.DebugPrintAt(screen, show1, infoX-40, infoY+20)
 }
 
 func (g *chessGame) clickSquare(x, y int) (err error) {
@@ -188,31 +194,32 @@ func (g *chessGame) clickSquare(x, y int) (err error) {
 func isRed(p uint8) bool { return p >= imgRedShuai && p <= imgRedBing }
 
 func (g *chessGame) isWin(red bool) bool {
-	var qz [][]int
+	var (
+		// 空位和我方棋子预估值,定义该长度最多扩容1次
+		our = make([][]int, 0, boardX*boardY/2)
+		// 敌方棋子最多16个
+		enemy = make([][]int, 0, 16)
+	)
 	for i := 0; i < boardX; i++ {
 		for j := 0; j < boardY; j++ {
-			if isRed(g.board[i][j]) == !red {
-				qz = append(qz, []int{i, j}) // 得到敌方所有棋子
+			if g.board[i][j] == 0 || isRed(g.board[i][j]) == red {
+				our = append(our, []int{i, j}) // 空位和我方棋子
+			} else {
+				enemy = append(enemy, []int{i, j}) // 敌方棋子
 			}
 		}
 	}
 
-	for i := 0; i < boardX; i++ {
-		for j := 0; j < boardY; j++ {
-			// 该点是空位或我方棋子
-			if g.board[i][j] == 0 || isRed(g.board[i][j]) == red {
-				for _, v := range qz {
-					// 敌方棋子可以走到我方棋子时,进行判将
-					if g.canNext(v[0], v[1], i, j) {
-						qz0, qz1 := g.board[i][j], g.board[v[0]][v[1]]
-						g.board[i][j] = qz1
-						g.board[v[0]][v[1]] = 0
-						ok := g.isJiang(red) // 假设落子,解除将军,说明还有棋
-						g.board[i][j], g.board[v[0]][v[1]] = qz0, qz1
-						if !ok {
-							return false
-						}
-					}
+	for _, v0 := range enemy {
+		for _, v1 := range our {
+			if g.canNext(v0[0], v0[1], v1[0], v1[1]) {
+				qz1, qz0 := g.board[v1[0]][v1[1]], g.board[v0[0]][v0[1]]
+				g.board[v1[0]][v1[1]] = qz0
+				g.board[v0[0]][v0[1]] = 0
+				ok := g.isJiang(red)
+				g.board[v1[0]][v1[1]], g.board[v0[0]][v0[1]] = qz1, qz0
+				if !ok {
+					return false // 假设落子后解除将军状态,则还能继续下
 				}
 			}
 		}
@@ -222,16 +229,16 @@ func (g *chessGame) isWin(red bool) bool {
 func (g *chessGame) isJiang(red bool) bool {
 	var i, j, jx, jy, sx, sy int
 	for j = 3; j <= 5; j++ {
-		for i = 0; i <= 2; i++ {
+		for i = 0; jy == 0 && i <= 2; i++ {
 			if g.board[i][j] == imgBlackJiang {
-				jx, jy = i, j
+				jx, jy = i, j // 找到黑将
 				break
 			}
 		}
 
-		for i = 7; i <= 9; i++ {
+		for i = 7; sy == 0 && i <= 9; i++ {
 			if g.board[i][j] == imgRedShuai {
-				sx, sy = i, j
+				sx, sy = i, j // 找到红帅
 				break
 			}
 		}
@@ -251,8 +258,8 @@ func (g *chessGame) isJiang(red bool) bool {
 	}
 
 	if red {
-		sx, sy = jx, jy
-	}
+		sx, sy = jx, jy // 红棋->将
+	} // else {} 黑棋->帅
 	for i = 0; i < boardX; i++ {
 		for j = 0; j < boardY; j++ {
 			if isRed(g.board[i][j]) == red {
@@ -314,7 +321,7 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 			// 当前将军,敌方没有任何棋子阻止将军,则胜利
 			if g.isWin(g.redPlayer) {
 				winMusic := musicGameWin
-				if !g.redPlayer && g.isAI.Load() == aiOn {
+				if !g.redPlayer && g.isAI.Load() > aiOff {
 					// 黑棋赢了,启用ai则播放玩家失败音乐
 					winMusic = musicGameLose
 				}
@@ -330,6 +337,12 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 		}
 
 		if g.redPlayer && g.isAI.Load() == aiOn {
+			// 在 ai 执行前将棋局局势复制到 g.aiBoard,不会影响界面渲染的 g.board
+			for x = 0; x < boardX; x++ {
+				for y = 0; y < boardY; y++ {
+					g.aiBoard[x][y] = g.board[x][y]
+				}
+			}
 			go g.ai() // 红方走子后,启动协程执行ai走黑棋
 		}
 		g.redPlayer = !g.redPlayer // 切换角色
@@ -488,13 +501,4 @@ func abs(a, b int) int {
 		return a
 	}
 	return -a
-}
-
-// -----------------------------------------------------------------------------
-func (g *chessGame) ai() {
-	g.isAI.Store(aiThink)    // 设置状态,ai思考中
-	defer g.isAI.Store(aiOn) // 设置状态,ai思考结束
-
-	// todo ai
-	g.aiPoint <- []int{2, 1, 9, 1}
 }
