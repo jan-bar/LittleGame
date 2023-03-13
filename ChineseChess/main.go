@@ -275,16 +275,10 @@ func (g *chessGame) playAudio(music int) (err error) {
 }
 
 func (g *chessGame) reset() {
-	for i := 0; i < boardX; i++ {
-		for j := 0; j < boardY; j++ {
-			// 将棋局恢复成开始状态
-			g.board[i][j] = boardStart[i][j]
-		}
-	}
+	g.loadFEN(boardStart)
 	g.gameOver = false
 	g.lastXY[0], g.lastXY[1] = -1, -1
 	g.selected[0], g.selected[1] = -1, -1
-	g.redPlayer = true
 }
 
 func (g *chessGame) stepNext(x, y, music int) (err error) {

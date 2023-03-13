@@ -39,24 +39,14 @@ const (
 	boardHeight = boardEdge + squareSize*10 + boardEdge
 )
 
+//goland:noinspection SpellCheckingInspection
 const (
 	boardX, boardY = 10, 9 // 棋盘的x,y格子数
 	topX, topY     = 8, 13 // 棋盘左上角起始x,y
-)
 
-// 初始棋局
-var boardStart = [boardX][boardY]uint8{
-	{imgBlackJu, imgBlackMa, imgBlackXiang, imgBlackShi, imgBlackJiang, imgBlackShi, imgBlackXiang, imgBlackMa, imgBlackJu},
-	{0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{0, imgBlackPao, 0, 0, 0, 0, 0, imgBlackPao, 0},
-	{imgBlackBing, 0, imgBlackBing, 0, imgBlackBing, 0, imgBlackBing, 0, imgBlackBing},
-	{0, 0, 0, 0, 0, 0, 0, 0, 0}, // 楚河
-	{0, 0, 0, 0, 0, 0, 0, 0, 0}, // 汉界
-	{imgRedBing, 0, imgRedBing, 0, imgRedBing, 0, imgRedBing, 0, imgRedBing},
-	{0, imgRedPao, 0, 0, 0, 0, 0, imgRedPao, 0},
-	{0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{imgRedJu, imgRedMa, imgRedXiang, imgRedShi, imgRedShuai, imgRedShi, imgRedXiang, imgRedMa, imgRedJu},
-}
+	// 开局棋谱
+	boardStart = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
+)
 
 const (
 	aiOff   = iota // 禁用ai
