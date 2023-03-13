@@ -16,7 +16,7 @@ https://github.com/Capricornwqh/ChineseChess
 */
 
 func main() {
-	game := &chessGame{aiPoint: make(chan aiMove, 1)}
+	game := &chessGame{}
 	err := game.loadResources()
 	if err != nil {
 		log.Fatal(err)
@@ -32,21 +32,16 @@ func main() {
 
 //goland:noinspection SpellCheckingInspection
 type (
-	aiMove struct {
-		x0, y0, x1, y1 int
-		gameOver       bool
-	}
 	chessGame struct {
 		images [imgLength]*ebiten.Image   // 所需图片资源
 		audios [musicLength]*audio.Player // 所需音频资源
 
-		// board: 棋盘数据,aiBoard: ai计算时用到的棋盘
-		board, aiBoard [boardX][boardY]uint8
+		// 棋盘数据
+		board, copy [boardX][boardY]uint8
 
-		// 参照 aiOff, aiOn, aiThink
-		isAI atomic.Uint32
-		// ai 走黑棋时某棋子从([0],[1])移动到([2],[3])
-		aiPoint chan aiMove
+		// ai 运行状态
+		aiStatus atomic.Uint32
+
 		// 是否游戏结束
 		gameOver bool
 
@@ -62,51 +57,26 @@ func (g *chessGame) Layout(_, _ int) (int, int) {
 }
 
 func (g *chessGame) Update() (err error) {
+	switch g.aiStatus.Load() {
+	case aiThink:
+		return // ai 正在思考,忽略其他任何操作
+	case aiPlay:
+		if err = g.clickSquare(g.selected[0], g.selected[1]); err != nil {
+			return
+		}
+		g.aiStatus.Store(aiOn)
+		return // ai模拟黑棋落子,恢复状态
+	}
+
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		if g.selected[0] == -1 {
 			// 在初始化时,按空格键切换 ai对战 / 人人对战
-			if !g.isAI.CompareAndSwap(aiOff, aiOn) {
-				g.isAI.Store(aiOff)
+			if !g.aiStatus.CompareAndSwap(aiOff, aiOn) {
+				g.aiStatus.Store(aiOff)
 			}
 		} // else {} 玩到中途按空格只会重新开始,不切换模式
 		g.reset()
 		return
-	}
-
-	switch g.isAI.Load() {
-	case aiThink:
-		return // ai 等待黑棋结果,停止其他任何操作
-	case aiOn:
-		if !g.redPlayer {
-			select {
-			case p, ok := <-g.aiPoint:
-				if ok {
-					// 赋值当前选择和上个位置,刷新棋盘时知道 ai 走法
-					g.lastXY[0], g.lastXY[1] = p.x0, p.y0
-					g.selected[0], g.selected[1] = p.x1, p.y1
-
-					if g.board[p.x1][p.y1] == 0 {
-						err = g.playAudio(musicPut) // 落点是空位,播放走子
-					} else {
-						err = g.playAudio(musicEat) // 落点是红棋,播放吃子
-					}
-					if err != nil {
-						return
-					}
-
-					g.board[p.x1][p.y1] = g.board[p.x0][p.y0]
-					g.board[p.x0][p.y0] = 0 // 确认 ai 落子
-					if p.gameOver {
-						err = g.playAudio(musicGameLose)
-						g.gameOver = true // ai 赢了,播放lose音乐
-						return
-					}
-					g.redPlayer = true // ai 没赢,切换为红方下棋
-				}
-			default:
-			}
-			return // ai 正在玩黑棋,停止其他任何操作
-		}
 	}
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
@@ -127,6 +97,11 @@ func (g *chessGame) Update() (err error) {
 }
 
 func (g *chessGame) Draw(screen *ebiten.Image) {
+	aiStatus, board := g.aiStatus.Load(), g.board
+	if aiStatus == aiThink {
+		board = g.copy // ai 思考时,画界面用 g.copy, g.board 会用于计算
+	}
+
 	op := &ebiten.DrawImageOptions{}
 	screen.DrawImage(g.images[imgChessBoard], op)
 
@@ -143,7 +118,7 @@ func (g *chessGame) Draw(screen *ebiten.Image) {
 	)
 	for xy[0] = 0; xy[0] < boardX; xy[0]++ {
 		for xy[1] = 0; xy[1] < boardY; xy[1]++ {
-			if qz := g.board[xy[0]][xy[1]]; qz > 0 {
+			if qz := board[xy[0]][xy[1]]; qz > 0 {
 				geoMReset(xy[0], xy[1], 0)
 				screen.DrawImage(g.images[qz], op)
 
@@ -169,7 +144,7 @@ func (g *chessGame) Draw(screen *ebiten.Image) {
 		}
 		show1 = "Click Mouse To Restart"
 	} else {
-		switch g.isAI.Load() {
+		switch aiStatus {
 		case aiOff:
 			show0 = "AI OFF"
 		case aiOn:
@@ -187,8 +162,7 @@ func (g *chessGame) Draw(screen *ebiten.Image) {
 func (g *chessGame) clickSquare(x, y int) (err error) {
 	if qz := g.board[x][y]; qz > 0 {
 		if isRed(qz) == g.redPlayer {
-			err = g.playAudio(musicSelect)
-			if err != nil {
+			if err = g.playAudio(musicSelect); err != nil {
 				return
 			}
 			// 点击 g.redPlayer 方棋子,等于切换选中棋子
@@ -196,15 +170,13 @@ func (g *chessGame) clickSquare(x, y int) (err error) {
 			g.lastXY = g.selected
 		} else {
 			// 点击 g.redPlayer 对方棋子,尝试吃掉该棋子
-			err = g.stepNext(x, y, musicEat)
-			if err != nil {
+			if err = g.stepNext(x, y, musicEat); err != nil {
 				return
 			}
 		}
 	} else {
 		// 点击空白位置,尝试走到该位置
-		err = g.stepNext(x, y, musicPut)
-		if err != nil {
+		if err = g.stepNext(x, y, musicPut); err != nil {
 			return
 		}
 	}
@@ -320,13 +292,13 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 		return // 初始未选中
 	}
 
-	if g.canNext(g.lastXY[0], g.lastXY[1], x, y) {
-		qz0, qz1 := g.board[x][y], g.board[g.lastXY[0]][g.lastXY[1]]
+	if lx, ly := g.lastXY[0], g.lastXY[1]; g.canNext(lx, ly, x, y) {
+		qz0, qz1 := g.board[x][y], g.board[lx][ly]
 		g.board[x][y] = qz1 // 尝试走这一步
-		g.board[g.lastXY[0]][g.lastXY[1]] = 0
+		g.board[lx][ly] = 0
 
 		if g.isJiang(!g.redPlayer) {
-			g.board[x][y], g.board[g.lastXY[0]][g.lastXY[1]] = qz0, qz1
+			g.board[x][y], g.board[lx][ly] = qz0, qz1
 			return // 走这一步己方被将军,不能走,恢复局势
 		}
 
@@ -349,14 +321,14 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 			}
 		}
 
-		if g.redPlayer && g.isAI.Load() == aiOn {
-			// 在 ai 执行前将棋局局势复制到 g.aiBoard,不会影响界面渲染的 g.board
+		if g.redPlayer && g.aiStatus.Load() == aiOn {
 			for x = 0; x < boardX; x++ {
 				for y = 0; y < boardY; y++ {
-					g.aiBoard[x][y] = g.board[x][y]
+					// ai 思考时,界面用 g.copy 渲染
+					g.copy[x][y] = g.board[x][y]
 				}
 			}
-			g.isAI.Store(aiThink)
+			g.aiStatus.Store(aiThink)
 			go g.ai() // 设置状态,ai思考中,并启动 ai 协程
 		}
 		g.redPlayer = !g.redPlayer // 切换角色

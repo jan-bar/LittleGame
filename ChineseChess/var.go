@@ -61,5 +61,6 @@ var boardStart = [boardX][boardY]uint8{
 const (
 	aiOff   = iota // 禁用ai
 	aiOn           // 启用ai
+	aiPlay         // ai落子
 	aiThink        // ai正在思考
 )

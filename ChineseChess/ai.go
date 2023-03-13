@@ -10,8 +10,9 @@ package main
 */
 
 func (g *chessGame) ai() {
-	defer g.isAI.Store(aiOn) // 设置状态,ai思考结束
+	defer g.aiStatus.Store(aiPlay) // 设置状态,ai落子
 
 	// todo ai
-	g.aiPoint <- aiMove{x0: 2, y0: 1, x1: 9, y1: 1}
+	g.lastXY[0], g.lastXY[1] = 2, 1
+	g.selected[0], g.selected[1] = 9, 1
 }
