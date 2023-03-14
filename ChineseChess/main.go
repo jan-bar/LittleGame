@@ -32,12 +32,15 @@ func main() {
 
 //goland:noinspection SpellCheckingInspection
 type (
+	moveXY struct {
+		x0, y0, x1, y1 int // [x0,y0] -> [x1,y1]
+	}
 	chessGame struct {
 		images [imgLength]*ebiten.Image   // 所需图片资源
 		audios [musicLength]*audio.Player // 所需音频资源
 
 		// 棋盘数据
-		board, copy [boardX][boardY]uint8
+		board, copy chessBord
 
 		// ai 运行状态
 		aiStatus atomic.Uint32
@@ -61,8 +64,10 @@ func (g *chessGame) Update() (err error) {
 	case aiThink:
 		return // ai 正在思考,忽略其他任何操作
 	case aiPlay:
-		if err = g.clickSquare(g.selected[0], g.selected[1]); err != nil {
-			return
+		if !g.gameOver { // 游戏没结束
+			if err = g.clickSquare(g.selected[0], g.selected[1]); err != nil {
+				return
+			}
 		}
 		g.aiStatus.Store(aiOn)
 		return // ai模拟黑棋落子,恢复状态
@@ -185,40 +190,66 @@ func (g *chessGame) clickSquare(x, y int) (err error) {
 
 func isRed(p uint8) bool { return p >= imgRedShuai && p <= imgRedBing }
 
-func (g *chessGame) isWin(red bool) bool {
+/*
+walk
+  true:  表示黑棋走子
+  false: 表示红棋走子
+move:
+  move != nil: 记录所有能走的步法(我方被将军时,只返回能解除将军的走法)
+
+return
+  true:  表示我方没棋
+  false: 表示我方还有棋可走
+*/
+func (g *chessGame) canStep(walk bool, move *[]moveXY) bool {
 	var (
-		// 空位和我方棋子预估值,定义该长度最多扩容1次
-		our = make([][]int, 0, boardX*boardY/2)
-		// 敌方棋子最多16个
-		enemy = make([][]int, 0, 16)
+		// 空位和敌方棋子预估值,定义该长度最多扩容1次
+		enemy = make([][]int, 0, boardX*boardY/2)
+		// 我方棋子最多16个
+		our = make([][]int, 0, 16)
 	)
 	for i := 0; i < boardX; i++ {
 		for j := 0; j < boardY; j++ {
-			if g.board[i][j] == 0 || isRed(g.board[i][j]) == red {
-				our = append(our, []int{i, j}) // 空位和我方棋子
+			if g.board[i][j] == 0 || isRed(g.board[i][j]) == walk {
+				enemy = append(enemy, []int{i, j}) // 空位和敌方棋子
 			} else {
-				enemy = append(enemy, []int{i, j}) // 敌方棋子
+				our = append(our, []int{i, j}) // 我方棋子
 			}
 		}
 	}
 
-	for _, v0 := range enemy {
-		for _, v1 := range our {
+	if move != nil {
+		*move = make([]moveXY, 0, len(our))
+	}
+	for _, v0 := range our {
+		for _, v1 := range enemy {
 			if g.canNext(v0[0], v0[1], v1[0], v1[1]) {
-				qz1, qz0 := g.board[v1[0]][v1[1]], g.board[v0[0]][v0[1]]
-				g.board[v1[0]][v1[1]] = qz0
-				g.board[v0[0]][v0[1]] = 0
-				ok := g.isJiang(red)
-				g.board[v1[0]][v1[1]], g.board[v0[0]][v0[1]] = qz1, qz0
-				if !ok {
-					return false // 假设落子后解除将军状态,则还能继续下
+				st := moveXY{x0: v0[0], y0: v0[1], x1: v1[0], y1: v1[1]}
+				qz1, qz0 := g.board[st.x1][st.y1], g.board[st.x0][st.y0]
+				g.board[st.x1][st.y1] = qz0
+				g.board[st.x0][st.y0] = 0
+				jiang := g.isJiang(walk)
+				g.board[st.x1][st.y1], g.board[st.x0][st.y0] = qz1, qz0
+				if !jiang { // 我方走这步,敌方未将军
+					if move != nil {
+						*move = append(*move, st)
+					} else {
+						return false
+					}
 				}
 			}
 		}
 	}
-	return true // 所有方案均不能挽救将军,胜利
+	if move != nil {
+		return len(*move) == 0 // 没得选也是没棋
+	}
+	return true // 我方没棋
 }
-func (g *chessGame) isJiang(red bool) bool {
+
+// attack
+//   true:  红棋攻击黑将
+//   false: 黑棋攻击红帅
+func (g *chessGame) isJiang(attack bool) bool {
 	var i, j, jx, jy, sx, sy int
 	for j = 3; j <= 5; j++ {
 		for i = 0; jy == 0 && i <= 2; i++ {
@@ -249,12 +280,12 @@ func (g *chessGame) isJiang(red bool) bool {
 		}
 	}
 
-	if red {
+	if attack {
 		sx, sy = jx, jy // 红棋->将
 	} // else {} 黑棋->帅
 	for i = 0; i < boardX; i++ {
 		for j = 0; j < boardY; j++ {
-			if isRed(g.board[i][j]) == red {
+			if isRed(g.board[i][j]) == attack {
 				if g.canNext(i, j, sx, sy) {
 					return true // 玩家棋子下一步可以吃将帅,则当前为将军
 				}
@@ -297,6 +328,7 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 		}
 
 		g.selected[0], g.selected[1] = x, y // 成功走出这一步,记录当前选择
+		log.Println(g.storeFEN())
 
 		if err = g.playAudio(music); err != nil {
 			return
@@ -304,8 +336,12 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 
 		if g.isJiang(g.redPlayer) {
 			// 当前将军,敌方没有任何棋子阻止将军,则胜利
-			if g.isWin(g.redPlayer) {
-				err = g.playAudio(musicGameWin)
+			if g.canStep(g.redPlayer, nil) {
+				if !g.redPlayer && g.aiStatus.Load() > aiOff {
+					err = g.playAudio(musicGameLose) // ai模式黑棋赢了
+				} else {
+					err = g.playAudio(musicGameWin)
+				}
 				g.gameOver = true
 				return // 赢了直接返回
 			}

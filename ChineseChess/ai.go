@@ -1,5 +1,9 @@
 package main
 
+import (
+	"math/rand"
+)
+
 /*
 博弈算法: https://blog.csdn.net/fsdev/category_1085675.html
 
@@ -12,7 +16,12 @@ package main
 func (g *chessGame) ai() {
 	defer g.aiStatus.Store(aiPlay) // 设置状态,ai落子
 
-	// todo ai
-	g.lastXY[0], g.lastXY[1] = 2, 1
-	g.selected[0], g.selected[1] = 9, 1
+	var move []moveXY
+	if g.canStep(true, &move) {
+		g.gameOver = true // ai没棋了
+	} else {
+		m := move[rand.Intn(len(move))] // 随机挑选合理走法
+		g.lastXY[0], g.lastXY[1] = m.x0, m.y0
+		g.selected[0], g.selected[1] = m.x1, m.y1
+	}
 }
