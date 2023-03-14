@@ -44,6 +44,9 @@ type (
 
 		// ai 运行状态
 		aiStatus atomic.Uint32
+		aiMove   moveXY
+		vlRed    int
+		vlBlack  int
 
 		// 是否游戏结束
 		gameOver bool
@@ -64,8 +67,9 @@ func (g *chessGame) Update() (err error) {
 	case aiThink:
 		return // ai 正在思考,忽略其他任何操作
 	case aiPlay:
-		if !g.gameOver { // 游戏没结束
-			if err = g.clickSquare(g.selected[0], g.selected[1]); err != nil {
+		if !g.gameOver { // 游戏没结束,黑棋落子
+			g.lastXY[0], g.lastXY[1] = g.aiMove.x0, g.aiMove.y0
+			if err = g.clickSquare(g.aiMove.x1, g.aiMove.y1); err != nil {
 				return
 			}
 		}
@@ -218,9 +222,6 @@ func (g *chessGame) canStep(walk bool, move *[]moveXY) bool {
 		}
 	}
 
-	if move != nil {
-		*move = make([]moveXY, 0, len(our))
-	}
 	for _, v0 := range our {
 		for _, v1 := range enemy {
 			if g.canNext(v0[0], v0[1], v1[0], v1[1]) {
@@ -306,6 +307,7 @@ func (g *chessGame) playAudio(music int) (err error) {
 }
 
 func (g *chessGame) reset() {
+	g.vlRed, g.vlBlack = 0, 0
 	g.loadFEN(boardStart)
 	g.gameOver = false
 	g.lastXY[0], g.lastXY[1] = -1, -1

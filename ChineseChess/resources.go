@@ -155,6 +155,7 @@ func (g *chessGame) loadFEN(fen string) {
 		}
 
 		if p > 0 && i < boardX && j < boardY {
+			g.addPiece(int(i), int(j), p, false)
 			g.board[i][j] = p
 			j++ // 合法数据的情况
 		}
