@@ -90,7 +90,7 @@ func (g *chessGame) searchFull(vlAlpha, vlBeta, depth int, noNull bool) int {
 		vlBest = -mateValue
 		mvBest = moveXY{x0: -1}
 		move   []moveXY
-		value  int
+		vl     int
 	)
 
 	if g.canStep(g.aiPlayer, &move, nil) {
@@ -108,21 +108,21 @@ func (g *chessGame) searchFull(vlAlpha, vlBeta, depth int, noNull bool) int {
 			newDepth--
 		}
 		// 递归调用自身,切换红黑棋,Alpha和Beta调换位置,返回负分
-		value = -g.searchFull(-vlBeta, -vlAlpha, newDepth, false)
+		vl = -g.searchFull(-vlBeta, -vlAlpha, newDepth, false)
 
 		g.board[v.x0][v.y0], g.board[v.x1][v.y1] = sp, dp
 		g.undoMakeMove(v, sp, dp) // 恢复走法,恢复分数
 
 		// 5. 进行Alpha-Beta大小判断和截断
-		if value > vlBest {
-			vlBest = value
-			if value >= vlBeta {
+		if vl > vlBest {
+			vlBest = vl
+			if vl >= vlBeta {
 				mvBest = v
 				break
 			}
 
-			if value > vlAlpha {
-				vlAlpha = value
+			if vl > vlAlpha {
+				vlAlpha = vl
 				mvBest = v
 
 				if g.distance == 0 {
@@ -174,14 +174,14 @@ func historyIndex(m moveXY) int {
 
 // 静态(Quiescence)搜索
 func (g *chessGame) searchQuiesce(vlAlpha, vlBeta int) int {
-	value := g.mateValue()
-	if value >= vlBeta {
-		return value
+	vl := g.mateValue()
+	if vl >= vlBeta {
+		return vl
 	}
 
-	vl := g.repStatus(1)
-	if vl > 0 {
-		return g.repValue(vl)
+	vlRep := g.repStatus(1)
+	if vlRep > 0 {
+		return g.repValue(vlRep)
 	}
 
 	if g.distance == limitMaxDepth {
@@ -237,7 +237,7 @@ func (g *chessGame) searchQuiesce(vlAlpha, vlBeta int) int {
 		g.makeMove(v, sp, dp) // 尝试走法,更新分数
 
 		// 递归调用自身,切换红黑棋,Alpha和Beta调换位置,返回负分
-		value = -g.searchQuiesce(-vlBeta, -vlAlpha)
+		vl = -g.searchQuiesce(-vlBeta, -vlAlpha)
 
 		g.board[v.x0][v.y0], g.board[v.x1][v.y1] = sp, dp
 		g.undoMakeMove(v, sp, dp) // 恢复走法,恢复分数
@@ -265,9 +265,9 @@ func mvvLva(sp, dp uint8) int { return mvvValue[dp][0] - mvvValue[sp][1] }
 
 func (g *chessGame) homeHalf(m moveXY) bool {
 	if g.aiPlayer {
-		return m.x1 >= 5 // 红棋没过河返回true
+		return m.x1 <= 4 // 黑棋没过河返回true
 	}
-	return m.x1 <= 4 // 黑棋没过河返回true
+	return m.x1 >= 5 // 红棋没过河返回true
 }
 
 // 判断是否重复局面
@@ -332,9 +332,9 @@ func (g *chessGame) mateValue() int {
 }
 func (g *chessGame) evaluate() int {
 	if g.aiPlayer { // 计算分数, advancedValue 表示先手优势
-		return g.vlRed - g.vlBlack + advancedValue
+		return g.vlBlack - g.vlRed + advancedValue
 	}
-	return g.vlBlack - g.vlRed + advancedValue
+	return g.vlRed - g.vlBlack + advancedValue
 }
 func (g *chessGame) changeSide() {
 	g.aiPlayer = !g.aiPlayer
@@ -372,9 +372,9 @@ func (g *chessGame) nullOkay() bool {
 // 空步搜索得到的分值是否有效
 func (g *chessGame) nullSafe() bool {
 	if g.aiPlayer {
-		return g.vlRed > nullSafeMargin
+		return g.vlBlack > nullSafeMargin
 	}
-	return g.vlBlack > nullSafeMargin
+	return g.vlRed > nullSafeMargin
 }
 func (g *chessGame) nullMove() {
 	g.mvList = append(g.mvList, moveXY{x0: -1})

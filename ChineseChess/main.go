@@ -388,6 +388,7 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 			g.aiStatus.Store(aiThink)
 			go g.ai() // 设置状态,ai思考中,并启动 ai 协程
 		}
+		g.redPlayer = !g.redPlayer
 	}
 	return
 }
