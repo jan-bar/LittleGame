@@ -1,5 +1,9 @@
 package main
 
+import (
+	"math/rand"
+)
+
 //goland:noinspection SpellCheckingInspection
 const (
 	imgChessBoard uint8 = iota // 棋盘
@@ -161,3 +165,53 @@ var (
 		imgBlackPao:   flipPiece(redPao),
 	}
 )
+
+//goland:noinspection SpellCheckingInspection
+var (
+	PreGenZobristLockPlayer uint32
+	PreGenZobristKeyPlayer  uint32
+
+	PreGenZobristKeyTable  = make(map[uint8][boardX][boardY]uint32, 15)
+	PreGenZobristLockTable = make(map[uint8][boardX][boardY]uint32, 15)
+
+	// MVV/LVA每种子力的价值
+	mvvValue = map[uint8][]int{
+		imgRedShuai: {50, 5}, imgBlackJiang: {50, 5},
+		imgRedShi: {10, 1}, imgBlackShi: {10, 1},
+		imgRedXiang: {10, 1}, imgBlackXiang: {10, 1},
+		imgRedMa: {30, 1}, imgBlackMa: {30, 1},
+		imgRedJu: {40, 4}, imgBlackJu: {40, 4},
+		imgRedPao: {30, 4}, imgBlackPao: {30, 4},
+		imgRedBing: {20, 2}, imgBlackBing: {20, 2},
+	}
+)
+
+func init() {
+	var (
+		// 用于生成非零且不重复的随机数
+		tmp    = map[uint32]struct{}{0: {}}
+		myRand = func() uint32 {
+			for {
+				u := rand.Uint32()
+				_, ok := tmp[u]
+				if !ok {
+					return u
+				}
+			}
+		}
+	)
+
+	PreGenZobristKeyPlayer = myRand()
+	PreGenZobristLockPlayer = myRand()
+	for k := imgRedShuai; k <= imgBlackBing; k++ {
+		var t0, t1 [boardX][boardY]uint32
+		for i := 0; i < boardX; i++ {
+			for j := 0; j < boardY; j++ {
+				t0[i][j] = myRand()
+				t1[i][j] = myRand()
+			}
+		}
+		PreGenZobristKeyTable[k] = t0
+		PreGenZobristLockTable[k] = t1
+	}
+}

@@ -16,7 +16,7 @@ https://github.com/Capricornwqh/ChineseChess
 */
 
 func main() {
-	game := &chessGame{}
+	game := &chessGame{historyTable: make(map[int]int, 8000)}
 	err := game.loadResources()
 	if err != nil {
 		log.Fatal(err)
@@ -44,17 +44,27 @@ type (
 
 		// ai 运行状态
 		aiStatus atomic.Uint32
-		aiMove   moveXY
-		vlRed    int
-		vlBlack  int
+		vlRed    int // 红棋分数
+		vlBlack  int // 黑棋分数
+		distance int // 搜索深度
+
+		mvList  []moveXY // 存放每步走法的数组
+		pcList  []uint8  // 存放每步被吃的棋子,如果没有棋子被吃,存放的是0
+		keyList []uint32 // 存放zobristKey
+		chkList []bool   // 是否被将军
+
+		zobristKey  uint32 //
+		zobristLock uint32 //
+
+		historyTable map[int]int // 历史表
 
 		// 是否游戏结束
 		gameOver bool
 
-		// 选中的格子,上一步棋位置
-		selected, lastXY [2]int
+		// [x0,y0]上一步位置,[x1,y1]当前落子位置
+		chessMove moveXY
 		// treu:红方,false:黑方
-		redPlayer bool
+		aiPlayer, redPlayer bool
 	}
 )
 
@@ -68,8 +78,7 @@ func (g *chessGame) Update() (err error) {
 		return // ai 正在思考,忽略其他任何操作
 	case aiPlay:
 		if !g.gameOver { // 游戏没结束,黑棋落子
-			g.lastXY[0], g.lastXY[1] = g.aiMove.x0, g.aiMove.y0
-			if err = g.clickSquare(g.aiMove.x1, g.aiMove.y1); err != nil {
+			if err = g.clickSquare(g.chessMove.x1, g.chessMove.y1); err != nil {
 				return
 			}
 		}
@@ -78,7 +87,7 @@ func (g *chessGame) Update() (err error) {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-		if g.selected[0] == -1 {
+		if g.chessMove.x0 == -1 {
 			// 在初始化时,按空格键切换 ai对战 / 人人对战
 			if !g.aiStatus.CompareAndSwap(aiOff, aiOn) {
 				g.aiStatus.Store(aiOff)
@@ -115,7 +124,7 @@ func (g *chessGame) Draw(screen *ebiten.Image) {
 	screen.DrawImage(g.images[imgChessBoard], op)
 
 	var (
-		xy [2]int // 用于和 g.selected,g.lastXY 进行比较
+		i, j int
 
 		geoMReset = func(i, j, off int) {
 			op.GeoM.Reset()
@@ -125,20 +134,20 @@ func (g *chessGame) Draw(screen *ebiten.Image) {
 			op.GeoM.Translate(xp, yp)
 		}
 	)
-	for xy[0] = 0; xy[0] < boardX; xy[0]++ {
-		for xy[1] = 0; xy[1] < boardY; xy[1]++ {
-			if qz := board[xy[0]][xy[1]]; qz > 0 {
-				geoMReset(xy[0], xy[1], 0)
+	for i = 0; i < boardX; i++ {
+		for j = 0; j < boardY; j++ {
+			if qz := board[i][j]; qz > 0 {
+				geoMReset(i, j, 0)
 				screen.DrawImage(g.images[qz], op)
 
-				if g.selected == xy {
+				if g.chessMove.x1 == i && g.chessMove.y1 == j {
 					// 棋子被选中,在相对偏移-5位置画圆圈
 					op.GeoM.Translate(0, -5)
 					screen.DrawImage(g.images[imgSelect], op)
 				}
-			} else if g.lastXY == xy {
+			} else if g.chessMove.x0 == i && g.chessMove.y0 == j {
 				// 该棋子上次所在位置,圈起来,提示该棋子从哪里走
-				geoMReset(xy[0], xy[1], -5)
+				geoMReset(i, j, -5)
 				screen.DrawImage(g.images[imgSelect], op)
 			}
 		}
@@ -175,8 +184,8 @@ func (g *chessGame) clickSquare(x, y int) (err error) {
 				return
 			}
 			// 点击 g.redPlayer 方棋子,等于切换选中棋子
-			g.selected[0], g.selected[1] = x, y
-			g.lastXY = g.selected
+			g.chessMove.x1, g.chessMove.y1 = x, y
+			g.chessMove.x0, g.chessMove.y0 = x, y
 		} else {
 			// 点击 g.redPlayer 对方棋子,尝试吃掉该棋子
 			if err = g.stepNext(x, y, musicEat); err != nil {
@@ -205,7 +214,7 @@ return
   true:  表示我方没棋
   false: 表示我方还有棋可走
 */
-func (g *chessGame) canStep(walk bool, move *[]moveXY) bool {
+func (g *chessGame) canStep(walk bool, move *[]moveXY, vls *[]int) bool {
 	var (
 		// 空位和敌方棋子预估值,定义该长度最多扩容1次
 		enemy = make([][]int, 0, boardX*boardY/2)
@@ -232,10 +241,17 @@ func (g *chessGame) canStep(walk bool, move *[]moveXY) bool {
 				jiang := g.isJiang(walk)
 				g.board[st.x1][st.y1], g.board[st.x0][st.y0] = qz1, qz0
 				if !jiang { // 我方走这步,敌方未将军
-					if move != nil {
-						*move = append(*move, st)
-					} else {
+					if move == nil {
 						return false
+					}
+
+					if vls != nil {
+						if g.board[st.x1][st.y1] != 0 {
+							*move = append(*move, st) // 吃掉敌方棋子,生成vls值
+							*vls = append(*vls, mvvLva(g.board[st.x0][st.y0], g.board[st.x1][st.y1]))
+						}
+					} else {
+						*move = append(*move, st) // 生成全部走法
 					}
 				}
 			}
@@ -309,28 +325,37 @@ func (g *chessGame) playAudio(music int) (err error) {
 func (g *chessGame) reset() {
 	g.vlRed, g.vlBlack = 0, 0
 	g.loadFEN(boardStart)
+
+	g.zobristKey = 0
+	g.zobristLock = 0
+	g.mvList = make([]moveXY, 1, 64)
+	g.mvList[0].x0 = -1
+	g.pcList = make([]uint8, 1, 64)
+	g.keyList = make([]uint32, 1, 64)
+	g.chkList = make([]bool, 1, 64)
+	g.chkList[0] = g.isJiang(!g.redPlayer) // 己方被将军
+
 	g.gameOver = false
-	g.lastXY[0], g.lastXY[1] = -1, -1
-	g.selected[0], g.selected[1] = -1, -1
+	g.chessMove.x0, g.chessMove.x1 = -1, -1
 }
 
 func (g *chessGame) stepNext(x, y, music int) (err error) {
-	if g.selected[0] < 0 {
+	if g.chessMove.x0 == -1 {
 		return // 初始未选中
 	}
 
-	if lx, ly := g.lastXY[0], g.lastXY[1]; g.canNext(lx, ly, x, y) {
-		qz0, qz1 := g.board[x][y], g.board[lx][ly]
+	if g.canNext(g.chessMove.x0, g.chessMove.y0, x, y) {
+		qz0, qz1 := g.board[x][y], g.board[g.chessMove.x0][g.chessMove.y0]
 		g.board[x][y] = qz1 // 尝试走这一步
-		g.board[lx][ly] = 0
+		g.board[g.chessMove.x0][g.chessMove.y0] = 0
 
 		if g.isJiang(!g.redPlayer) {
-			g.board[x][y], g.board[lx][ly] = qz0, qz1
+			g.board[x][y], g.board[g.chessMove.x0][g.chessMove.y0] = qz0, qz1
 			return // 走这一步己方被将军,不能走,恢复局势
 		}
 
-		g.selected[0], g.selected[1] = x, y // 成功走出这一步,记录当前选择
-		log.Println(g.storeFEN())
+		g.chessMove.x1, g.chessMove.y1 = x, y
+		g.makeMove(g.chessMove, qz1, qz0) // 更新分数
 
 		if err = g.playAudio(music); err != nil {
 			return
@@ -338,7 +363,7 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 
 		if g.isJiang(g.redPlayer) {
 			// 当前将军,敌方没有任何棋子阻止将军,则胜利
-			if g.canStep(g.redPlayer, nil) {
+			if g.canStep(g.redPlayer, nil, nil) {
 				if !g.redPlayer && g.aiStatus.Load() > aiOff {
 					err = g.playAudio(musicGameLose) // ai模式黑棋赢了
 				} else {
@@ -363,7 +388,6 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 			g.aiStatus.Store(aiThink)
 			go g.ai() // 设置状态,ai思考中,并启动 ai 协程
 		}
-		g.redPlayer = !g.redPlayer // 切换角色
 	}
 	return
 }

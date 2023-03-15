@@ -106,7 +106,10 @@ func (g *chessGame) loadFEN(fen string) {
 	// 最后一个数字表示回合数, 示例请看: boardStart
 	// 本逻辑只确保解析不会报错,没有判断棋局是否正确
 
-	var i, j, p uint8
+	var (
+		i, j int
+		p    uint8
+	)
 	g.redPlayer = true // 默认红棋先行
 	for is := 0; is < len(fen); is++ {
 		p = 0
@@ -123,7 +126,7 @@ func (g *chessGame) loadFEN(fen string) {
 				g.board[i][j-1] = 0
 			}
 		case '1', '2', '3', '4', '5', '6', '7', '8', '9':
-			j += fen[is] - '0' // 跳过空行
+			j += int(fen[is] - '0') // 跳过空行
 		case 'K':
 			p = imgRedShuai
 		case 'k':
@@ -155,7 +158,7 @@ func (g *chessGame) loadFEN(fen string) {
 		}
 
 		if p > 0 && i < boardX && j < boardY {
-			g.addPiece(int(i), int(j), p, false)
+			g.addPiece(i, j, p)
 			g.board[i][j] = p
 			j++ // 合法数据的情况
 		}
