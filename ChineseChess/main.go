@@ -16,7 +16,11 @@ https://github.com/Capricornwqh/ChineseChess
 */
 
 func main() {
-	game := &chessGame{historyTable: make(map[int]int, 8000)}
+	game := &chessGame{
+		hashTable:    make(map[uint32]*hashTable, hashMask+1),
+		historyTable: make(map[int]int, 8000),
+		killerTable:  make(map[int]*[2]moveXY, limitMaxDepth),
+	}
 	err := game.loadResources()
 	if err != nil {
 		log.Fatal(err)
@@ -34,6 +38,13 @@ func main() {
 type (
 	moveXY struct {
 		x0, y0, x1, y1 int // [x0,y0] -> [x1,y1]
+	}
+	hashTable struct {
+		depth       int    // 深度
+		flag        int    // 节点类型
+		vl          int    // 分值
+		mv          moveXY // 最佳走法
+		zobristLock uint32 // 校验码
 	}
 	chessGame struct {
 		images [imgLength]*ebiten.Image   // 所需图片资源
@@ -53,10 +64,22 @@ type (
 		keyList []uint32 // 存放zobristKey
 		chkList []bool   // 是否被将军
 
-		zobristKey  uint32 //
-		zobristLock uint32 //
+		zobristKey  uint32 // 棋面局势校验码
+		zobristLock uint32 // 唯一性校验码
+		// 置换表
+		hashTable map[uint32]*hashTable
+		// 历史表
+		historyTable map[int]int
+		// 杀手走法表
+		killerTable map[int]*[2]moveXY
 
-		historyTable map[int]int // 历史表
+		mvHash, mvKiller1, mvKiller2 moveXY
+
+		mvs         []moveXY
+		vls         []int
+		phase       int
+		index       int
+		singleReply bool
 
 		// 是否游戏结束
 		gameOver bool
