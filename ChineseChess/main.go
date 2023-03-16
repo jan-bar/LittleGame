@@ -48,7 +48,7 @@ type (
 		vlBlack  int // 黑棋分数
 		distance int // 搜索深度
 
-		mvList  []moveXY // 存放每步走法的数组
+		mvList  []moveXY // 存放每次走法的数组
 		pcList  []uint8  // 存放每步被吃的棋子,如果没有棋子被吃,存放的是0
 		keyList []uint32 // 存放zobristKey
 		chkList []bool   // 是否被将军
@@ -60,10 +60,13 @@ type (
 
 		// 是否游戏结束
 		gameOver bool
+		// 显示提示信息
+		showMsg string
 
 		// [x0,y0]上一步位置,[x1,y1]当前落子位置
 		chessMove moveXY
-		// treu:红方,false:黑方
+		// aiPlayer:  ai 逻辑切换角色,为了不影响 redPlayer
+		// redPlayer: 主线程逻辑判断哪方落子
 		aiPlayer, redPlayer bool
 	}
 )
@@ -153,28 +156,20 @@ func (g *chessGame) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	var show0, show1 string
+	var show string
 	if g.gameOver {
-		if g.redPlayer {
-			show0 = "Red Win"
-		} else {
-			show0 = "Black Win"
-		}
-		show1 = "Click Mouse To Restart"
+		show = g.showMsg + " Click Mouse To Restart"
 	} else {
 		switch aiStatus {
 		case aiOff:
-			show0 = "AI OFF"
+			show = "AI OFF   Key Space To Switch And Restart"
 		case aiOn:
-			show0 = "AI ON"
+			show = "AI ON    Key Space To Switch And Restart"
 		case aiThink:
-			show0 = "AI THINK"
+			show = "AI THINK Please Wait"
 		}
-		show1 = "Key Space To Switch And Restart"
 	}
-	const infoX, infoY = 245, 270 // 楚河汉界中间位置显示提示信息
-	ebitenutil.DebugPrintAt(screen, show0, infoX, infoY)
-	ebitenutil.DebugPrintAt(screen, show1, infoX-40, infoY+20)
+	ebitenutil.DebugPrintAt(screen, show, 5, boardHeight-20)
 }
 
 func (g *chessGame) clickSquare(x, y int) (err error) {
@@ -355,6 +350,7 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 		}
 
 		g.chessMove.x1, g.chessMove.y1 = x, y
+		g.aiPlayer = !g.redPlayer
 		g.makeMove(g.chessMove, qz1, qz0) // 更新分数
 
 		if err = g.playAudio(music); err != nil {
@@ -364,11 +360,17 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 		if g.isJiang(g.redPlayer) {
 			// 当前将军,敌方没有任何棋子阻止将军,则胜利
 			if g.canStep(g.redPlayer, nil, nil) {
-				if !g.redPlayer && g.aiStatus.Load() > aiOff {
-					err = g.playAudio(musicGameLose) // ai模式黑棋赢了
+				playMusic := musicGameWin
+				if g.redPlayer {
+					g.showMsg = "Red Win"
 				} else {
-					err = g.playAudio(musicGameWin)
+					if g.aiStatus.Load() > aiOff {
+						// ai模式黑棋赢了,播放失败音乐
+						playMusic = musicGameLose
+					}
+					g.showMsg = "Black Win"
 				}
+				err = g.playAudio(playMusic)
 				g.gameOver = true
 				return // 赢了直接返回
 			}
@@ -376,6 +378,21 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 			if err = g.playAudio(musicJiang); err != nil {
 				return
 			}
+		}
+
+		if vlRep := g.repStatus(3); vlRep > 0 {
+			switch vlRep = g.repValue(vlRep); {
+			case vlRep > -winValue && vlRep < winValue:
+				g.showMsg = "a draw in chess" // 双方都在长将,和棋
+			case g.redPlayer != (vlRep < 0):
+				g.showMsg = "long will be negative, Black Win" // 红棋长将
+				err = g.playAudio(musicGameWin)
+			default:
+				g.showMsg = "long will be negative, Red Win" // 黑棋长将
+				err = g.playAudio(musicGameWin)
+			}
+			g.gameOver = true
+			return
 		}
 
 		if g.redPlayer && g.aiStatus.Load() == aiOn {

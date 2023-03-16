@@ -30,7 +30,7 @@ func (g *chessGame) ai() {
 	// 限定最大搜索深度,迭代加深会用历史表提高效率
 	for i := 1; i <= limitMaxDepth; i++ {
 		value = g.searchFull(-mateValue, mateValue, i, false)
-		if time.Since(ts) > time.Millisecond {
+		if time.Since(ts) > time.Second {
 			break // 时间用完了,不再搜索
 		}
 		if value > winValue || value < -winValue {
@@ -63,7 +63,7 @@ func (g *chessGame) searchFull(vlAlpha, vlBeta, depth int, noNull bool) int {
 			return g.searchQuiesce(vlAlpha, vlBeta)
 		}
 
-		var vlRep = g.repStatus(1)
+		vlRep := g.repStatus(1)
 		if vlRep > 0 {
 			return g.repValue(vlRep)
 		}
@@ -94,7 +94,7 @@ func (g *chessGame) searchFull(vlAlpha, vlBeta, depth int, noNull bool) int {
 	)
 
 	if g.canStep(g.aiPlayer, &move, nil) {
-		return vlBest // 没棋,返回很大的分值
+		return g.mateValue() // 没棋了
 	}
 	sort.Sort(&sortMoveXY{h: g.historyTable, m: move})
 	for _, v := range move {
@@ -196,7 +196,7 @@ func (g *chessGame) searchQuiesce(vlAlpha, vlBeta int) int {
 	if g.inCheck() {
 		// 5. 如果被将军，则生成全部走法
 		if g.canStep(g.aiPlayer, &mvs, nil) {
-			return -mateValue
+			return g.mateValue() // 没棋了
 		}
 		for _, mv := range mvs {
 			vls = append(vls, g.historyTable[historyIndex(mv)])
@@ -218,7 +218,7 @@ func (g *chessGame) searchQuiesce(vlAlpha, vlBeta int) int {
 
 		// 7. 如果局面评价没有截断，再生成吃子走法
 		if g.canStep(g.aiPlayer, &mvs, &vls) {
-			return -mateValue
+			return g.mateValue() // 没棋了
 		}
 		// 根据vls排序,且vls也要进行排序
 		sort.Sort(&sortMoveXY{vls: vls, m: mvs})
@@ -364,9 +364,9 @@ func (g *chessGame) inCheck() bool {
 // 当前局面的优势是否足以进行空步搜索
 func (g *chessGame) nullOkay() bool {
 	if g.aiPlayer {
-		return g.vlRed > nullOKeyMargin
+		return g.vlBlack > nullOKeyMargin
 	}
-	return g.vlBlack > nullOKeyMargin
+	return g.vlRed > nullOKeyMargin
 }
 
 // 空步搜索得到的分值是否有效
@@ -393,6 +393,8 @@ func (g *chessGame) undoNullMove() {
 	g.mvList = g.mvList[:len(g.mvList)-1]
 }
 func (g *chessGame) makeMove(m moveXY, sp, dp uint8) {
+	tk := g.zobristKey // 缓存局面信息
+
 	g.pcList = append(g.pcList, dp)
 	if dp > 0 {
 		g.addPiece(m.x1, m.y1, dp, true)
@@ -400,7 +402,7 @@ func (g *chessGame) makeMove(m moveXY, sp, dp uint8) {
 	g.addPiece(m.x0, m.y0, sp, true)
 	g.addPiece(m.x1, m.y1, sp)
 	g.mvList = append(g.mvList, m)
-	g.keyList = append(g.keyList, g.zobristKey)
+	g.keyList = append(g.keyList, tk)
 	g.changeSide()
 	g.chkList = append(g.chkList, g.isJiang(g.aiPlayer))
 	g.distance++ // 增加搜索深度

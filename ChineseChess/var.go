@@ -38,9 +38,10 @@ const (
 const (
 	squareSize = 56 // 棋子长宽
 	boardEdge  = 8  // 边界大小
-	// 棋盘的长和宽,和 ChessBoard.png 图片长宽相同
-	boardWidth  = boardEdge + squareSize*9 + boardEdge
-	boardHeight = boardEdge + squareSize*10 + boardEdge
+	// 棋盘的长,和 ChessBoard.png 图片长相同
+	boardWidth = boardEdge + squareSize*9 + boardEdge
+	// 棋盘的宽,在 ChessBoard.png 图片宽度增加底部信息显示
+	boardHeight = boardEdge + squareSize*10 + boardEdge + 25
 )
 
 //goland:noinspection SpellCheckingInspection
@@ -195,6 +196,7 @@ func init() {
 				u := rand.Uint32()
 				_, ok := tmp[u]
 				if !ok {
+					tmp[u] = struct{}{}
 					return u
 				}
 			}
