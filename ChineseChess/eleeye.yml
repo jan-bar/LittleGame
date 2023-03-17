@@ -1,0 +1,23 @@
+# eleeye程序相关配置
+
+option:
+  guiname: JanbarChess
+  usemillisec: true
+  promotion: false
+  usebook: true
+  useegtb: true
+  hashsize: 0
+  threads: 0
+  idle: none
+  randomness: small
+  style: normal
+
+go:
+  # 限制节点数
+  # 216: 傻瓜,1296: 菜鸟,7776: 新手,46656: 入门
+  # 279936: 业余,1679616: 专业,10077696: 大师,60466176: 特大
+  # go nodes xxx, 按照上述分值划分算力
+  # go depth xxx, 限定深度, 100 时为无敌模式
+  # go time 60000(限时1分钟) movestogo 999(限着) opptime 59000 oppmovestogo 998
+  # go time 60000(限时1分钟) increment 4000(加时4秒) opptime 123000 oppincrement 4000
+  command: "go nodes 10077696"

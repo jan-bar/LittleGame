@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"log"
 	"sync/atomic"
 
@@ -21,7 +22,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	game.reset() // 开局
+	game.aiStatus.Store(aiOn)
+	game.reset() // 默认启用ai,重置开局
 
 	ebiten.SetWindowSize(boardWidth, boardHeight)
 	ebiten.SetWindowTitle("中国象棋")
@@ -40,16 +42,19 @@ type (
 		audios [musicLength]*audio.Player // 所需音频资源
 
 		// 棋盘数据
-		board, copy chessBord
+		board, copy [boardX][boardY]uint8
+		// 棋子走法,用于组成字符串发送给ai引擎
+		position bytes.Buffer
 
 		// ai 运行状态
 		aiStatus atomic.Uint32
 
 		// 是否游戏结束
 		gameOver bool
-
-		// 选中的格子,上一步棋位置
-		selected, lastXY [2]int
+		// 显示信息
+		showMsg string
+		// 棋子移动,起点:[x0,y0],终点:[x1,y1]
+		move moveXY
 		// treu:红方,false:黑方
 		redPlayer bool
 	}
@@ -65,7 +70,7 @@ func (g *chessGame) Update() (err error) {
 		return // ai 正在思考,忽略其他任何操作
 	case aiPlay:
 		if !g.gameOver { // 游戏没结束
-			if err = g.clickSquare(g.selected[0], g.selected[1]); err != nil {
+			if err = g.clickSquare(g.move.x1, g.move.y1); err != nil {
 				return
 			}
 		}
@@ -74,7 +79,7 @@ func (g *chessGame) Update() (err error) {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-		if g.selected[0] == -1 {
+		if g.move.x0 == -1 {
 			// 在初始化时,按空格键切换 ai对战 / 人人对战
 			if !g.aiStatus.CompareAndSwap(aiOff, aiOn) {
 				g.aiStatus.Store(aiOff)
@@ -111,9 +116,9 @@ func (g *chessGame) Draw(screen *ebiten.Image) {
 	screen.DrawImage(g.images[imgChessBoard], op)
 
 	var (
-		xy [2]int // 用于和 g.selected,g.lastXY 进行比较
+		i, j int
 
-		geoMReset = func(i, j, off int) {
+		geoMReset = func(off int) {
 			op.GeoM.Reset()
 			// 图像向右是X,向下是Y,但是数组向下是i,向右是j
 			// [8,13]是棋盘左上角起始点,每个棋子长宽squareSize
@@ -121,47 +126,39 @@ func (g *chessGame) Draw(screen *ebiten.Image) {
 			op.GeoM.Translate(xp, yp)
 		}
 	)
-	for xy[0] = 0; xy[0] < boardX; xy[0]++ {
-		for xy[1] = 0; xy[1] < boardY; xy[1]++ {
-			if qz := board[xy[0]][xy[1]]; qz > 0 {
-				geoMReset(xy[0], xy[1], 0)
+	for i = 0; i < boardX; i++ {
+		for j = 0; j < boardY; j++ {
+			if qz := board[i][j]; qz > 0 {
+				geoMReset(0)
 				screen.DrawImage(g.images[qz], op)
 
-				if g.selected == xy {
+				if g.move.x1 == i && g.move.y1 == j {
 					// 棋子被选中,在相对偏移-5位置画圆圈
 					op.GeoM.Translate(0, -5)
 					screen.DrawImage(g.images[imgSelect], op)
 				}
-			} else if g.lastXY == xy {
+			} else if g.move.x0 == i && g.move.y0 == j {
 				// 该棋子上次所在位置,圈起来,提示该棋子从哪里走
-				geoMReset(xy[0], xy[1], -5)
+				geoMReset(-5)
 				screen.DrawImage(g.images[imgSelect], op)
 			}
 		}
 	}
 
-	var show0, show1 string
+	var show string
 	if g.gameOver {
-		if g.redPlayer {
-			show0 = "Red Win"
-		} else {
-			show0 = "Black Win"
-		}
-		show1 = "Click Mouse To Restart"
+		show = g.showMsg + " Click Mouse To Restart"
 	} else {
 		switch aiStatus {
 		case aiOff:
-			show0 = "AI OFF"
+			show = "AI OFF   Key Space To Switch And Restart"
 		case aiOn:
-			show0 = "AI ON"
+			show = "AI ON    Key Space To Switch And Restart"
 		case aiThink:
-			show0 = "AI THINK"
+			show = "AI THINK Please Wait"
 		}
-		show1 = "Key Space To Switch And Restart"
 	}
-	const infoX, infoY = 245, 270 // 楚河汉界中间位置显示提示信息
-	ebitenutil.DebugPrintAt(screen, show0, infoX, infoY)
-	ebitenutil.DebugPrintAt(screen, show1, infoX-40, infoY+20)
+	ebitenutil.DebugPrintAt(screen, show, 5, boardHeight-20)
 }
 
 func (g *chessGame) clickSquare(x, y int) (err error) {
@@ -171,8 +168,8 @@ func (g *chessGame) clickSquare(x, y int) (err error) {
 				return
 			}
 			// 点击 g.redPlayer 方棋子,等于切换选中棋子
-			g.selected[0], g.selected[1] = x, y
-			g.lastXY = g.selected
+			g.move.x0, g.move.y0 = x, y
+			g.move.x1, g.move.y1 = x, y
 		} else {
 			// 点击 g.redPlayer 对方棋子,尝试吃掉该棋子
 			if err = g.stepNext(x, y, musicEat); err != nil {
@@ -308,27 +305,34 @@ func (g *chessGame) playAudio(music int) (err error) {
 func (g *chessGame) reset() {
 	g.loadFEN(boardStart)
 	g.gameOver = false
-	g.lastXY[0], g.lastXY[1] = -1, -1
-	g.selected[0], g.selected[1] = -1, -1
+	g.move.x0, g.move.x1 = -1, -1
+
+	g.position.Reset() // 重置ai起始字符串
+	g.position.WriteString("position startpos moves")
 }
 
 func (g *chessGame) stepNext(x, y, music int) (err error) {
-	if g.selected[0] < 0 {
+	if g.move.x0 == -1 {
 		return // 初始未选中
 	}
 
-	if lx, ly := g.lastXY[0], g.lastXY[1]; g.canNext(lx, ly, x, y) {
-		qz0, qz1 := g.board[x][y], g.board[lx][ly]
+	if g.canNext(g.move.x0, g.move.y0, x, y) {
+		qz0, qz1 := g.board[x][y], g.board[g.move.x0][g.move.y0]
 		g.board[x][y] = qz1 // 尝试走这一步
-		g.board[lx][ly] = 0
+		g.board[g.move.x0][g.move.y0] = 0
 
 		if g.isJiang(!g.redPlayer) {
-			g.board[x][y], g.board[lx][ly] = qz0, qz1
+			g.board[x][y], g.board[g.move.x0][g.move.y0] = qz0, qz1
 			return // 走这一步己方被将军,不能走,恢复局势
 		}
 
-		g.selected[0], g.selected[1] = x, y // 成功走出这一步,记录当前选择
-		log.Println(g.storeFEN())
+		g.move.x1, g.move.y1 = x, y // 成功走出这一步,记录当前选择
+
+		g.position.WriteByte(' ') // 记录每一步走法,用于发送给ai
+		g.position.WriteByte('a' + byte(g.move.y0))
+		g.position.WriteByte('9' - byte(g.move.x0))
+		g.position.WriteByte('a' + byte(g.move.y1))
+		g.position.WriteByte('9' - byte(g.move.x1))
 
 		if err = g.playAudio(music); err != nil {
 			return
@@ -337,11 +341,17 @@ func (g *chessGame) stepNext(x, y, music int) (err error) {
 		if g.isJiang(g.redPlayer) {
 			// 当前将军,敌方没有任何棋子阻止将军,则胜利
 			if g.canStep(g.redPlayer, nil) {
-				if !g.redPlayer && g.aiStatus.Load() > aiOff {
-					err = g.playAudio(musicGameLose) // ai模式黑棋赢了
+				playMusic := musicGameWin
+				if g.redPlayer {
+					g.showMsg = "Red Win"
 				} else {
-					err = g.playAudio(musicGameWin)
+					if g.aiStatus.Load() > aiOff {
+						// ai模式黑棋赢了,播放失败音乐
+						playMusic = musicGameLose
+					}
+					g.showMsg = "Black Win"
 				}
+				err = g.playAudio(playMusic)
 				g.gameOver = true
 				return // 赢了直接返回
 			}
