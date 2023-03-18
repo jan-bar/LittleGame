@@ -11,6 +11,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/jan-bar/LittleGame/runAI"
 )
 
 /*
@@ -30,10 +31,24 @@ func main() {
 		log.Fatal(err)
 	}
 
-	game.eleeye, err = NewEleeye(cnf.Eleeye, cnf.Option)
+	game.eleeye, err = runAI.NewAI(cnf.Eleeye)
 	if err != nil {
 		log.Fatal("failed to start the ai engine", err)
 	}
+
+	wait := "ucciok" // 初始命令,确保ai正常运行
+	game.eleeye.Send("ucci", runAI.MatchLineContains(&wait))
+
+	var b strings.Builder
+	for k, v := range cnf.Option {
+		b.WriteString("setoption")
+		b.WriteByte(' ')
+		b.WriteString(k)
+		b.WriteByte(' ')
+		b.WriteString(v)
+		b.WriteByte('\n')
+	}
+	game.eleeye.Send(b.String(), nil) // 发送所有设置给ai引擎
 
 	if cnf.StartFEN == "startpos" {
 		// 加载常规开局
@@ -72,7 +87,7 @@ type (
 
 		// ai 运行状态
 		aiStatus  atomic.Uint32
-		eleeye    *Eleeye
+		eleeye    *runAI.AI
 		startFEN  string // 启动fen
 		goCommand string // 启动ai引擎命令
 

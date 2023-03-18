@@ -3,13 +3,9 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"os/exec"
-	"strings"
-	"sync"
-	"syscall"
-	"time"
+
+	"github.com/jan-bar/LittleGame/runAI"
 )
 
 /*
@@ -121,7 +117,7 @@ func (g *chessGame) goNext(mv *moveXY, ms *string) {
 	g.eleeye.Send(g.position.String(), nil) // 发送当前局面
 
 	move := "bestmove" // 启动ai引擎思考,接收结果
-	g.eleeye.Send(g.goCommand, &move)
+	g.eleeye.Send(g.goCommand, runAI.MatchLineContains(&move))
 
 	var a, b, c, d byte
 	fmt.Sscanf(move, "bestmove %c%c%c%c ", &a, &b, &c, &d)
@@ -136,84 +132,4 @@ func (g *chessGame) goNext(mv *moveXY, ms *string) {
 	if ms != nil {
 		*ms = string([]byte{a, b, c, d})
 	}
-}
-
-type Eleeye struct {
-	cmd  *exec.Cmd
-	send chan string
-	lock sync.RWMutex
-	buf  bytes.Buffer
-}
-
-func NewEleeye(exe string, option map[string]string) (*Eleeye, error) {
-	cmd := exec.Command(exe)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow: true, // 隐藏黑窗
-	}
-
-	e := &Eleeye{cmd: cmd, send: make(chan string)}
-	cmd.Stdin = e
-	cmd.Stdout = e
-
-	err := cmd.Start()
-	if err != nil {
-		return nil, err
-	}
-
-	wait := "ucciok" // 初始命令,确保ai正常运行
-	e.Send("ucci", &wait)
-
-	var b strings.Builder
-	for k, v := range option {
-		b.WriteString("setoption")
-		b.WriteByte(' ')
-		b.WriteString(k)
-		b.WriteByte(' ')
-		b.WriteString(v)
-		b.WriteByte('\n')
-	}
-	// 发送所有设置给ai引擎
-	e.Send(b.String(), nil)
-	return e, nil
-}
-
-func (e *Eleeye) Read(p []byte) (int, error) {
-	return copy(p, <-e.send), nil // chan给ai标准输入发送数据
-}
-
-func (e *Eleeye) Write(p []byte) (int, error) {
-	e.lock.Lock()
-	defer e.lock.Unlock()
-	return e.buf.Write(p) // 缓存ai标准输出
-}
-
-func (e *Eleeye) Send(send string, wait *string) {
-	e.send <- send + "\n"
-
-	if wait != nil {
-		cmp := []byte(*wait)
-		for {
-			e.lock.RLock()
-
-			for _, val := range bytes.Split(e.buf.Bytes(), []byte{'\n'}) {
-				// 按换行分隔,在这行发现匹配结果,则返回这行字符串
-				if bytes.Contains(val, cmp) {
-					*wait = string(val)
-					e.lock.RUnlock()
-
-					e.lock.Lock()
-					e.buf.Reset()
-					e.lock.Unlock()
-					return
-				}
-			}
-
-			e.lock.RUnlock()
-			time.Sleep(time.Millisecond)
-		}
-	}
-}
-
-func (e *Eleeye) Close() error {
-	return e.cmd.Process.Kill()
 }
