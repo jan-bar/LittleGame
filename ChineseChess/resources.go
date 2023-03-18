@@ -107,6 +107,13 @@ func (g *chessGame) loadFEN(fen string) {
 	// 本逻辑只确保解析不会报错,没有判断棋局是否正确
 
 	var i, j, p uint8
+	for i = 0; i < boardX; i++ {
+		for j = 0; j < boardY; j++ {
+			g.board[i][j] = 0 // 先清空棋盘
+		}
+	}
+
+	i, j = 0, 0
 	g.redPlayer = true // 默认红棋先行
 	for is := 0; is < len(fen); is++ {
 		p = 0
@@ -118,10 +125,8 @@ func (g *chessGame) loadFEN(fen string) {
 			}
 			return
 		case '/':
-			i++ // 换行,复位该行所有数据
-			for j = boardY; j > 0; j-- {
-				g.board[i][j-1] = 0
-			}
+			i++
+			j = 0 // 换行
 		case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			j += fen[is] - '0' // 跳过空行
 		case 'K':

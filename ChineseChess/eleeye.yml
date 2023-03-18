@@ -1,5 +1,14 @@
-# eleeye程序相关配置
+# eleeye 引擎路径
+eleeye: ./ELEEYE.EXE
 
+startFEN: "startpos" # 常规开局
+#startFEN: "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR b - - 0 1" # 黑棋先行
+#startFEN: "4ka2r/4aP3/9/9/9/6N2/9/RC1p1n3/2p1p4/3K5 w - - 0 1" # 残局开局
+
+# on: ai对战,off: 人人对战
+aiStatus: on
+
+# 启动引擎参数
 option:
   guiname: JanbarChess
   usemillisec: true

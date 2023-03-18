@@ -1,5 +1,11 @@
 package main
 
+import (
+	"os"
+
+	"gopkg.in/yaml.v3"
+)
+
 //goland:noinspection SpellCheckingInspection
 const (
 	imgChessBoard uint8 = iota // 棋盘
@@ -44,9 +50,6 @@ const (
 const (
 	boardX, boardY = 10, 9 // 棋盘的x,y格子数
 	topX, topY     = 8, 13 // 棋盘左上角起始x,y
-
-	// 开局棋谱
-	boardStart = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
 )
 
 const (
@@ -55,3 +58,27 @@ const (
 	aiPlay         // ai落子
 	aiThink        // ai正在思考
 )
+
+type config struct {
+	Eleeye   string            `yaml:"eleeye"`
+	StartFEN string            `yaml:"startFEN"`
+	AiStatus string            `yaml:"aiStatus"`
+	Option   map[string]string `json:"option"`
+	Go       struct {
+		Command string `yaml:"command"`
+	} `yaml:"go"`
+}
+
+func loadConfig() (*config, error) {
+	fr, err := os.Open("eleeye.yml")
+	if err != nil {
+		return nil, err
+	}
+
+	var cnf config
+	err = yaml.NewDecoder(fr).Decode(&cnf)
+	if err != nil {
+		return nil, err
+	}
+	return &cnf, nil
+}

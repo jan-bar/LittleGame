@@ -4,8 +4,9 @@ package main
 
 import (
 	"bytes"
-	"math/rand"
+	"fmt"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -113,11 +114,27 @@ bestmove g6g5 ponder a0a1 , nobestmove(没有找到走法)
 func (g *chessGame) ai() {
 	defer g.aiStatus.Store(aiPlay) // 设置状态,ai落子
 
-	var move []moveXY
-	if g.canStep(true, &move) {
-		g.gameOver = true // ai没棋了
-	} else {
-		g.move = move[rand.Intn(len(move))] // 随机挑选合理走法
+	g.goNext(&g.move, nil)
+}
+
+func (g *chessGame) goNext(mv *moveXY, ms *string) {
+	g.eleeye.Send(g.position.String(), nil) // 发送当前局面
+
+	move := "bestmove" // 启动ai引擎思考,接收结果
+	g.eleeye.Send(g.goCommand, &move)
+
+	var a, b, c, d byte
+	fmt.Sscanf(move, "bestmove %c%c%c%c ", &a, &b, &c, &d)
+
+	if mv != nil {
+		mv.y0 = int(a - 'a')
+		mv.x0 = int('9' - b)
+		mv.y1 = int(c - 'a')
+		mv.x1 = int('9' - d)
+	}
+
+	if ms != nil {
+		*ms = string([]byte{a, b, c, d})
 	}
 }
 
@@ -128,8 +145,8 @@ type Eleeye struct {
 	buf  bytes.Buffer
 }
 
-func NewEleeye() (*Eleeye, error) {
-	cmd := exec.Command("./ELEEYE.EXE")
+func NewEleeye(exe string, option map[string]string) (*Eleeye, error) {
+	cmd := exec.Command(exe)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow: true, // 隐藏黑窗
 	}
@@ -137,7 +154,27 @@ func NewEleeye() (*Eleeye, error) {
 	e := &Eleeye{cmd: cmd, send: make(chan string)}
 	cmd.Stdin = e
 	cmd.Stdout = e
-	return e, cmd.Start()
+
+	err := cmd.Start()
+	if err != nil {
+		return nil, err
+	}
+
+	wait := "ucciok" // 初始命令,确保ai正常运行
+	e.Send("ucci", &wait)
+
+	var b strings.Builder
+	for k, v := range option {
+		b.WriteString("setoption")
+		b.WriteByte(' ')
+		b.WriteString(k)
+		b.WriteByte(' ')
+		b.WriteString(v)
+		b.WriteByte('\n')
+	}
+	// 发送所有设置给ai引擎
+	e.Send(b.String(), nil)
+	return e, nil
 }
 
 func (e *Eleeye) Read(p []byte) (int, error) {
@@ -157,18 +194,23 @@ func (e *Eleeye) Send(send string, wait *string) {
 		cmp := []byte(*wait)
 		for {
 			e.lock.RLock()
-			if bytes.Contains(e.buf.Bytes(), cmp) {
-				// todo 需要判断后面有个换行,确保有整行数据,且只返回这行数据
-				*wait = string(e.buf.Bytes())
-				e.lock.RUnlock()
-				break // 读取缓冲区,匹配成功退出
+
+			for _, val := range bytes.Split(e.buf.Bytes(), []byte{'\n'}) {
+				// 按换行分隔,在这行发现匹配结果,则返回这行字符串
+				if bytes.Contains(val, cmp) {
+					*wait = string(val)
+					e.lock.RUnlock()
+
+					e.lock.Lock()
+					e.buf.Reset()
+					e.lock.Unlock()
+					return
+				}
 			}
+
 			e.lock.RUnlock()
 			time.Sleep(time.Millisecond)
 		}
-		e.lock.Lock()
-		e.buf.Reset()
-		e.lock.Unlock()
 	}
 }
 

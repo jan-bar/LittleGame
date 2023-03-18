@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"log"
+	"strings"
 	"sync/atomic"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -22,9 +24,31 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	game.aiStatus.Store(aiOn)
+
+	cnf, err := loadConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	game.eleeye, err = NewEleeye(cnf.Eleeye, cnf.Option)
+	if err != nil {
+		log.Fatal("failed to start the ai engine", err)
+	}
+
+	if cnf.StartFEN == "startpos" {
+		// 加载常规开局
+		game.startFEN = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1"
+	} else {
+		game.startFEN = cnf.StartFEN // 加载指定fen局面,一般都是残局
+	}
+	game.goCommand = cnf.Go.Command
+
+	if cnf.AiStatus == "on" || cnf.AiStatus == "true" {
+		game.aiStatus.Store(aiOn) // 启动ai
+	}
 	game.reset() // 默认启用ai,重置开局
 
+	ebiten.SetWindowClosingHandled(true)
 	ebiten.SetWindowSize(boardWidth, boardHeight)
 	ebiten.SetWindowTitle("中国象棋")
 	if err = ebiten.RunGame(game); err != nil {
@@ -47,7 +71,10 @@ type (
 		position bytes.Buffer
 
 		// ai 运行状态
-		aiStatus atomic.Uint32
+		aiStatus  atomic.Uint32
+		eleeye    *Eleeye
+		startFEN  string // 启动fen
+		goCommand string // 启动ai引擎命令
 
 		// 是否游戏结束
 		gameOver bool
@@ -65,6 +92,14 @@ func (g *chessGame) Layout(_, _ int) (int, int) {
 }
 
 func (g *chessGame) Update() (err error) {
+	if ebiten.IsWindowBeingClosed() {
+		err = g.eleeye.Close() // 关闭ai引擎
+		if err == nil {
+			err = errors.New("close window")
+		}
+		return
+	}
+
 	switch g.aiStatus.Load() {
 	case aiThink:
 		return // ai 正在思考,忽略其他任何操作
@@ -79,13 +114,15 @@ func (g *chessGame) Update() (err error) {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-		if g.move.x0 == -1 {
-			// 在初始化时,按空格键切换 ai对战 / 人人对战
-			if !g.aiStatus.CompareAndSwap(aiOff, aiOn) {
-				g.aiStatus.Store(aiOff)
-			}
-		} // else {} 玩到中途按空格只会重新开始,不切换模式
-		g.reset()
+		// 按空格键切换 ai对战 / 人人对战
+		if !g.aiStatus.CompareAndSwap(aiOff, aiOn) {
+			g.aiStatus.Store(aiOff)
+		}
+		return
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		g.reset() // 按R键重置游戏
 		return
 	}
 
@@ -151,9 +188,9 @@ func (g *chessGame) Draw(screen *ebiten.Image) {
 	} else {
 		switch aiStatus {
 		case aiOff:
-			show = "AI OFF   Key Space To Switch And Restart"
+			show = "AI Status OFF Key Space Switch,Key R Restart"
 		case aiOn:
-			show = "AI ON    Key Space To Switch And Restart"
+			show = "AI Status ON  Key Space Switch,Key R Restart"
 		case aiThink:
 			show = "AI THINK Please Wait"
 		}
@@ -303,12 +340,29 @@ func (g *chessGame) playAudio(music int) (err error) {
 }
 
 func (g *chessGame) reset() {
-	g.loadFEN(boardStart)
+	g.loadFEN(g.startFEN)
 	g.gameOver = false
 	g.move.x0, g.move.x1 = -1, -1
 
+	// 发送指令给ai引擎,开始新的一局
+	g.eleeye.Send("setoption newgame\nsetoption ponder false", nil)
+
 	g.position.Reset() // 重置ai起始字符串
-	g.position.WriteString("position startpos moves")
+	g.position.WriteString("position fen ")
+	g.position.WriteString(g.startFEN)
+	if strings.Contains(g.startFEN, " b ") && g.aiStatus.Load() > aiOff {
+		var d string
+		g.goNext(&g.move, &d)
+		// 黑棋优先,先让ai走一步,并更新到局面上
+		g.board[g.move.x1][g.move.y1] = g.board[g.move.x0][g.move.y0]
+		g.board[g.move.x0][g.move.y0] = 0
+		g.position.WriteString(" moves ")
+		g.position.WriteString(d)
+
+		g.redPlayer = true // 开局黑棋下了一步,轮到红棋了
+	} else {
+		g.position.WriteString(" moves")
+	}
 }
 
 func (g *chessGame) stepNext(x, y, music int) (err error) {
