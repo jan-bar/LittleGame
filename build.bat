@@ -9,7 +9,7 @@ go build -ldflags "-s -w" -trimpath -o ..\test.wasm
 
 set GOOS=windows
 set GOARCH=amd64
-go build -ldflags "-s -w" -trimpath -o ..\test.exe
+go build -ldflags "-H windowsgui -s -w" -trimpath -o ..\test.exe
 
 cd %pwd%
 if not exist httpServer.exe (
