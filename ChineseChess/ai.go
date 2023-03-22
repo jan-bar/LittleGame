@@ -16,6 +16,9 @@ import (
 
 本AI通过UCCI协议,调用ELEEYE.EXE可执行程序执行AI逻辑
 
+永久开源免费,且号称棋力很强
+皮卡鱼引擎: https://github.com/official-pikafish/Pikafish ,注意这个引擎用 uci 而不是 ucci
+
 ucci 引擎启动后第一条指令,只有收到这个指令才能进行后续
 
 isready, 返回: readyok, 看注释这个命令没啥用
