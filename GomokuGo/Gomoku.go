@@ -14,6 +14,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 func main() {
@@ -51,12 +52,12 @@ func main() {
 		var (
 			lt  = strconv.Itoa(i + 1)
 			ln  = 25 + 40*i // 通过调试得到计算数值
-			lnf = float64(ln)
+			lnf = float32(ln)
 		)
 		// 为背景图片添加横竖线条,以及每个线条对应数字
-		ebitenutil.DrawLine(g.img[4], 0, lnf, 650, lnf, lineColor)
+		vector.StrokeLine(g.img[4], 0, lnf, 650, lnf, 1,lineColor,false)
 		ebitenutil.DebugPrintAt(g.img[4], lt, 600, ln)
-		ebitenutil.DrawLine(g.img[4], lnf, 0, lnf, 650, lineColor)
+		vector.StrokeLine(g.img[4], lnf, 0, lnf, 650,1, lineColor,false)
 		ebitenutil.DebugPrintAt(g.img[4], lt, ln, 610)
 	}
 

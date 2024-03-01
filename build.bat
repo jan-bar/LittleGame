@@ -15,3 +15,12 @@ cd %pwd%
 if not exist httpServer.exe (
   go build -ldflags "-s -w" -trimpath -o httpServer.exe
 )
+
+fc /b "%GOROOT%\misc\wasm\wasm_exec.html" wasm_exec.html > nul 2>&1
+if %errorlevel% neq 0 (
+  xcopy /y "%GOROOT%\misc\wasm\wasm_exec.html" wasm_exec.html*
+)
+fc /b "%GOROOT%\misc\wasm\wasm_exec.js" wasm_exec.js > nul 2>&1
+if %errorlevel% neq 0 (
+  xcopy /y "%GOROOT%\misc\wasm\wasm_exec.js" wasm_exec.js*
+)

@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os/exec"
-	"time"
 )
 
 func main() {
@@ -16,12 +14,18 @@ func main() {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *port)
 	log.Printf("listening on %q...", addr)
-	go func() {
-		time.Sleep(time.Second * 2) // 2秒以后浏览器打开一个网页
-		//goland:noinspection HttpUrlsUsage
-		_, _ = exec.Command("explorer", "http://"+addr+"/wasm_exec.html").Output()
-	}()
-	err := http.ListenAndServe(addr, http.FileServer(http.Dir(*dir)))
+
+	fh := http.FileServer(http.Dir(*dir))
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/wasm_exec.html", "/wasm_exec.js", "/test.wasm":
+			fh.ServeHTTP(w, r)
+		default:
+			http.Redirect(w, r, "/wasm_exec.html", http.StatusFound)
+		}
+	})
+	err := http.ListenAndServe(addr, nil)
 	if err != nil {
 		log.Fatalln(err)
 	}

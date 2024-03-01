@@ -479,60 +479,60 @@ func (g *chessGame) canNext(x0, y0, x1, y1 int) bool {
 		return false
 	case imgRedJu, imgBlackJu: // 红黑车一样
 		if x0 == x1 {
-			min, max := y0+1, y1
-			if min > max {
-				min, max = y1+1, y0
+			minY, maxY := y0+1, y1
+			if minY > maxY {
+				minY, maxY = y1+1, y0
 			}
-			for min < max {
-				if g.board[x0][min] != 0 {
+			for minY < maxY {
+				if g.board[x0][minY] != 0 {
 					return false // 中间有子直接返回
 				}
-				min++
+				minY++
 			}
 			return true
 		} else if y0 == y1 {
-			min, max := x0+1, x1
-			if min > max {
-				min, max = x1+1, x0
+			minX, maxX := x0+1, x1
+			if minX > maxX {
+				minX, maxX = x1+1, x0
 			}
-			for min < max {
-				if g.board[min][y0] != 0 {
+			for minX < maxX {
+				if g.board[minX][y0] != 0 {
 					return false // 中间有子直接返回
 				}
-				min++
+				minX++
 			}
 			return true
 		}
 		return false
 	case imgRedPao, imgBlackPao: // 红黑炮规则一样
 		if x0 == x1 {
-			min, max, cnt := y0+1, y1, 0
-			if min > max {
-				min, max = y1+1, y0
+			minY, maxY, cnt := y0+1, y1, 0
+			if minY > maxY {
+				minY, maxY = y1+1, y0
 			}
-			for min < max {
-				if g.board[x0][min] != 0 {
+			for minY < maxY {
+				if g.board[x0][minY] != 0 {
 					if cnt++; cnt > 1 {
 						return false // 中间有2子直接返回
 					}
 				}
-				min++
+				minY++
 			}
 			if (cnt == 0 && qz1 == 0) || (cnt == 1 && qz1 > 0) {
 				return true // 中间无棋子,落点为空位 或 中间有1子,落点敌方子
 			}
 		} else if y0 == y1 {
-			min, max, cnt := x0+1, x1, 0
-			if min > max {
-				min, max = x1+1, x0
+			minX, maxX, cnt := x0+1, x1, 0
+			if minX > maxX {
+				minX, maxX = x1+1, x0
 			}
-			for min < max {
-				if g.board[min][y0] != 0 {
+			for minX < maxX {
+				if g.board[minX][y0] != 0 {
 					if cnt++; cnt > 1 {
 						return false // 中间有2子直接返回
 					}
 				}
-				min++
+				minX++
 			}
 			if (cnt == 0 && qz1 == 0) || (cnt == 1 && qz1 > 0) {
 				return true // 中间无棋子,落点为空位 或 中间有1子,落点敌方子

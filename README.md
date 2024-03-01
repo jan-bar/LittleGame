@@ -7,4 +7,6 @@
 从%GOROOT%\misc\wasm复制`wasm_exec.html`和`wasm_exec.js`这两个文件
 
 * 五子棋[GomokuGo](GomokuGo)
+* 中国象棋[ChineseChess](ChineseChess)
+* 扫雷[]
 
