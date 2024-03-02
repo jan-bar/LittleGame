@@ -16,9 +16,12 @@ import (
 )
 
 func main() {
+	//goland:noinspection GoDeprecation
 	rand.Seed(time.Now().Unix())
 
-	m := &mine{h: 16, w: 30, mineCnt: 99}
+	// m := &mine{h: 9, w: 9, mineCnt: 10}
+	m := &mine{h: 16, w: 16, mineCnt: 40}
+	// m := &mine{h: 16, w: 30, mineCnt: 99}
 	err := m.loadResources()
 	if err != nil {
 		log.Fatal(err)
@@ -44,11 +47,11 @@ type (
 	mine struct {
 		// 雷区宽高
 		h, w int
+		// 0: 正常,1: 赢,2: 输
+		playing int
 		// 雷区格子数据
 		data [][]*grid
-		// 开局状态
-		start bool
-		// 剩余雷数
+		// 总雷数
 		mineCnt int
 		// 开始时间
 		timeStart time.Time
@@ -60,8 +63,10 @@ type (
 		gridW, gridH int
 		// 显示哪个笑脸
 		faceNum int
-		// 笑脸左上角坐标(用于显示或计算点击笑脸)
-		faceX, faceY float64
+		// 笑脸X坐标
+		faceX float64
+		// 判断在笑脸位置
+		isFace func(h, w int) bool
 		// 界面图片,数字图片,笑脸图片
 		img, num, face []*ebiten.Image
 	}
@@ -88,10 +93,6 @@ func (m *mine) around(h, w int, f func(h, w int)) {
 }
 
 func (m *mine) initData() {
-	if m.start {
-		return
-	}
-
 	var i, j int
 	for ; i < m.h; i++ {
 		for j = 0; j < m.w; j++ {
@@ -124,28 +125,204 @@ func (m *mine) initData() {
 		}
 	}
 
-	m.start = true
-	m.timeStart = time.Now()
+	m.playing = 0
+	m.timeStart = time.Time{}
+	m.timeCnt = 0
 	m.gridW, m.gridH = m.w*gridHW+6, (m.h+2)*gridHW+6
-	m.faceX, m.faceY = float64(m.gridW/2)-18, 4
+
+	faceX := m.gridW/2 - 18
+	m.faceX = float64(faceX)
+	m.isFace = func(h, w int) bool {
+		return h >= 4 && h <= 28 && w >= faceX && w < faceX+24
+	}
+	m.faceNum = 0
+
 	m.timeY = float64(m.gridW - 18)
 	ebiten.SetWindowSize(m.gridW, m.gridH)
 }
 
+func (m *mine) cursorPos() (h, w, state int) {
+	w, h = ebiten.CursorPosition()
+	if m.isFace(h, w) {
+		state = 1
+	} else {
+		w, h = (w-3)/gridHW, h/gridHW-2
+		if w >= 0 && w < m.w && h >= 0 && h < m.h {
+			state = 2
+		}
+	}
+	return
+}
+
+func (m *mine) reactionChain(h, w int) {
+	d := m.data[h][w]
+	if d.state != 0 {
+		return // 已打开或插旗 或 游戏完成
+	}
+	d.state = -1
+
+	switch d.data {
+	case 10:
+		if m.playing == 0 {
+			m.playing = 2
+			d.data = 12 // 游戏结束,标记第1个踩到的雷
+		}
+	case 0: // 递归点开所有空白区域
+		m.around(h, w, func(h, w int) { m.reactionChain(h, w) })
+	}
+}
+
 func (m *mine) Update() error {
-	if m.timeCnt < 999 {
-		m.timeCnt = int(time.Since(m.timeStart).Seconds())
+	if m.playing != 0 {
+		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+			_, _, state := m.cursorPos()
+			if state == 1 {
+				m.faceNum = 4
+			} else {
+				switch m.playing {
+				case 1:
+					m.faceNum = 3
+				case 2:
+					m.faceNum = 2
+				}
+			}
+		} else if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+			_, _, state := m.cursorPos()
+			if state == 1 {
+				m.initData() // 左键小脸松开重新开始游戏
+			}
+		}
+		return nil
 	}
 
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		m.faceNum = 1
-		x, y := ebiten.CursorPosition()
-		w, h := (x-3)/gridHW, y/gridHW-2
-		m.data[h][w].state = 1
+	if m.timeCnt < 999 && !m.timeStart.IsZero() {
+		m.timeCnt = int(time.Since(m.timeStart) / time.Second)
+	}
+
+	var i, j int
+	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+		for i = 0; i < m.h; i++ {
+			for j = 0; j < m.w; j++ {
+				if d := m.data[i][j]; d.state == 1 {
+					d.state = 0
+				}
+			}
+		}
+
+		h, w, state := m.cursorPos()
+		switch state {
+		case 1:
+			m.faceNum = 4
+		case 2:
+			switch d := m.data[h][w]; d.state {
+			case 0:
+				d.state = 1
+			case -1:
+				m.around(h, w, func(ah, aw int) {
+					if ad := m.data[ah][aw]; ad.state == 0 {
+						ad.state = 1
+					}
+				})
+			}
+			m.faceNum = 1
+		default:
+			m.faceNum = 1
+		}
 	} else if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+		for i = 0; i < m.h; i++ {
+			for j = 0; j < m.w; j++ {
+				if d := m.data[i][j]; d.state == 1 {
+					d.state = 0
+				}
+			}
+		}
 		m.faceNum = 0
-	}
 
+		h, w, state := m.cursorPos()
+		switch state {
+		case 1:
+			m.initData() // 笑脸位置松开左键,重新开局
+			return nil
+		case 2:
+			if m.timeStart.IsZero() {
+				m.timeStart = time.Now()
+			}
+
+			switch d := m.data[h][w]; d.state {
+			case 0: // 判断单击
+				m.reactionChain(h, w)
+			case -1: // 判断双击
+				if d.data >= 1 && d.data <= 8 {
+					i = 0
+					m.around(h, w, func(ah, aw int) {
+						if ad := m.data[ah][aw]; ad.state == 2 {
+							i++
+						}
+					})
+					if d.data == i {
+						m.around(h, w, func(ah, aw int) {
+							m.reactionChain(ah, aw)
+						})
+					}
+				}
+			}
+
+			if m.playing == 2 {
+				m.faceNum = 2
+
+				for i = 0; i < m.h; i++ {
+					for j = 0; j < m.w; j++ {
+						switch d := m.data[i][j]; d.state {
+						case 0: // 将所有雷打开
+							if d.data == 10 {
+								d.state = -1
+							}
+						case 2: // 插旗位置不是雷,设置标雷错误
+							if d.data != 10 {
+								d.state = -1
+								d.data = 11
+							}
+						}
+					}
+				}
+				return nil
+			}
+
+			// 点开位置 + 总雷数 = 全部格子数, 此时赢
+			h = 0
+			for i = 0; i < m.h; i++ {
+				for j = 0; j < m.w; j++ {
+					if d := m.data[i][j]; d.state == -1 {
+						h++
+					}
+				}
+			}
+
+			if h+m.mineCnt == m.h*m.w {
+				m.faceNum = 3
+				m.playing = 1
+
+				for i = 0; i < m.h; i++ {
+					for j = 0; j < m.w; j++ {
+						if d := m.data[i][j]; d.state == 0 {
+							d.state = 2 // 剩余全插旗
+						}
+					}
+				}
+				return nil
+			}
+		}
+	} else if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonRight) {
+		h, w, state := m.cursorPos()
+		if state == 2 {
+			switch d := m.data[h][w]; d.state {
+			case 0:
+				d.state = 2 // 插旗
+			case 2:
+				d.state = 0 // 取消
+			}
+		}
+	}
 	return nil
 }
 
@@ -154,16 +331,23 @@ var backgroundColor = color.RGBA{R: 0xc0, G: 0xc0, B: 0xc0, A: 0xff}
 func (m *mine) Draw(screen *ebiten.Image) {
 	screen.Fill(backgroundColor)
 
+	ct := m.mineCnt
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(3, 2*gridHW)
 	for i := 0; i < m.h; i++ {
 		for j := 0; j < m.w; j++ {
 			switch d := m.data[i][j]; d.state {
-			case 0:
+			case 0: // 默认状态
 				screen.DrawImage(m.img[15], op)
-			case 1:
+			case 1: // 按住左键不松开
 				screen.DrawImage(m.img[0], op)
-			default:
+			case 2: // 标记旗子
+				screen.DrawImage(m.img[14], op)
+				ct--
+			default: // 按照数据显示
+				if d.data == 11 {
+					ct-- // 错误插旗也算标雷
+				}
 				screen.DrawImage(m.img[d.data], op)
 			}
 			op.GeoM.Translate(gridHW, 0)
@@ -174,7 +358,14 @@ func (m *mine) Draw(screen *ebiten.Image) {
 
 	op.GeoM.Reset() // 显示雷数
 	op.GeoM.Translate(5, 5)
-	for _, v := range []int{(m.mineCnt / 100) % 10, (m.mineCnt / 10) % 10, m.mineCnt % 10} {
+	var num []int
+	if ct >= 0 {
+		num = []int{(ct / 100) % 10, (ct / 10) % 10, ct % 10}
+	} else {
+		ct = -ct // 负数只显示2位
+		num = []int{11, (ct / 10) % 10, ct % 10}
+	}
+	for _, v := range num {
 		screen.DrawImage(m.num[v], op)
 		op.GeoM.Translate(13, 0)
 	}
@@ -187,7 +378,7 @@ func (m *mine) Draw(screen *ebiten.Image) {
 	}
 
 	op.GeoM.Reset() // 显示笑脸
-	op.GeoM.Translate(m.faceX, m.faceY)
+	op.GeoM.Translate(m.faceX, 4)
 	screen.DrawImage(m.face[m.faceNum], op)
 }
 
