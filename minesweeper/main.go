@@ -93,7 +93,7 @@ func (m *mine) around(h, w int, f func(h, w int)) {
 }
 
 func (m *mine) initData() {
-	var i, j int
+	var i, j, k int
 
 	if len(m.data) < m.h {
 		m.data = make([][]*grid, m.h)
@@ -106,22 +106,25 @@ func (m *mine) initData() {
 
 	for i = 0; i < m.h; i++ {
 		for j = 0; j < m.w; j++ {
-			if d := m.data[i][j]; d == nil {
-				m.data[i][j] = new(grid)
+			d := m.data[i][j]
+			if d == nil {
+				d = new(grid)
+				m.data[i][j] = d
+			}
+			d.state = 0
+
+			if k < m.mineCnt {
+				d.data = 10
+				k++ // 布雷
 			} else {
-				d.data, d.state = 0, 0
+				d.data = 0
 			}
 		}
 	}
 
-	for i = 0; i < m.mineCnt; i++ {
-		m.data[i/m.w][i%m.w].data = 10
-	}
-	// 填充指定数量的雷,然后用洗牌算法打乱
-	// 之前判断不是雷则布雷,当雷太多时导致算法复杂度太高
 	rand.Shuffle(m.h*m.w, func(i, j int) {
 		mi := m.data[i/m.w][i%m.w]
-		mj := m.data[j/m.w][j%m.w]
+		mj := m.data[j/m.w][j%m.w] // 洗牌算法打乱雷区
 		mi.data, mj.data = mj.data, mi.data
 	})
 
