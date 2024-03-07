@@ -114,14 +114,16 @@ func (m *mine) initData() {
 		}
 	}
 
-	cnt := 0
-	for cnt < m.mineCnt {
-		i, j = rand.Intn(m.h), rand.Intn(m.w)
-		if d := m.data[i][j]; d.data != 10 {
-			cnt++
-			d.data = 10
-		}
+	for i = 0; i < m.mineCnt; i++ {
+		m.data[i/m.w][i%m.w].data = 10
 	}
+	// 填充指定数量的雷,然后用洗牌算法打乱
+	// 之前判断不是雷则布雷,当雷太多时导致算法复杂度太高
+	rand.Shuffle(m.h*m.w, func(i, j int) {
+		mi := m.data[i/m.w][i%m.w]
+		mj := m.data[j/m.w][j%m.w]
+		mi.data, mj.data = mj.data, mi.data
+	})
 
 	for i = 0; i < m.h; i++ {
 		for j = 0; j < m.w; j++ {
