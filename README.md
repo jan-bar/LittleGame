@@ -1,16 +1,31 @@
 # LittleGame
 
-编译: .\build.bat GomokuGo
+build: `.\build.bat [directory]`
 
-生成 `test.exe` window平台
+generate `test.exe` to window platform
 
-生成 `test.wasm` web浏览器
+generate `test.wasm` web browser
 
-生成 `httpServer.exe`, 浏览器运行的http服务器
+generate `httpServer.exe` to http service
 
-从 `%GOROOT%\misc\wasm` 复制 `wasm_exec.html` 和 `wasm_exec.js` 到http服务目录
+form `%GOROOT%\misc\wasm` copy `wasm_exec.html` and `wasm_exec.js` to http directory
 
-* 五子棋[GomokuGo](GomokuGo)
-* 中国象棋[ChineseChess](ChineseChess)
-* 扫雷[minesweeper](minesweeper)
+example: 
+```shell
+# build game
+.\build.bat minesweeper
+
+# run game in windows
+.\test.exe
+
+# start http server
+.\httpServer
+
+# run the game in the browser, click run button in browser
+start http://127.0.0.1:8080
+```
+
+* [GomokuGo](GomokuGo)
+* [ChineseChess](ChineseChess)
+* [minesweeper](minesweeper)
 
