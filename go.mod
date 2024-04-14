@@ -2,7 +2,7 @@ module github.com/jan-bar/LittleGame
 
 go 1.18
 
-require github.com/hajimehoshi/ebiten/v2 v2.7.0
+require github.com/hajimehoshi/ebiten/v2 v2.7.1
 
 require (
 	github.com/ebitengine/gomobile v0.0.0-20240329170434-1771503ff0a8 // indirect

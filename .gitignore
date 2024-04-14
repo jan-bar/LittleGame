@@ -16,5 +16,4 @@
 .idea/
 *.wasm
 *.tmp.*
-wasm_exec.html
-wasm_exec.js
+wasm.html

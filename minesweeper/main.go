@@ -102,9 +102,7 @@ func (m *mine) initData() {
 		if len(m.data[i]) < m.w {
 			m.data[i] = make([]*grid, m.w)
 		}
-	}
 
-	for i = 0; i < m.h; i++ {
 		for j = 0; j < m.w; j++ {
 			d := m.data[i][j]
 			if d == nil {
@@ -133,7 +131,7 @@ func (m *mine) initData() {
 			if d := m.data[i][j]; d.data != 10 {
 				m.around(i, j, func(h, w int) {
 					if m.data[h][w].data == 10 {
-						d.data++
+						d.data++ // 计算格子雷数
 					}
 				})
 			}
@@ -281,6 +279,7 @@ func (m *mine) Update() error {
 						}
 					})
 					if d.data == state {
+						// 该数字周围雷已经标完,打开全部可点击位置
 						m.around(i, j, func(ah, aw int) {
 							m.reactionChain(ah, aw)
 						})

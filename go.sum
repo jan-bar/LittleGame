@@ -6,8 +6,8 @@ github.com/ebitengine/oto/v3 v3.2.0 h1:FuggTJTSI3/3hEYwZEIN0CZVXYT29ZOdCu+z/f4Qj
 github.com/ebitengine/oto/v3 v3.2.0/go.mod h1:dOKXShvy1EQbIXhXPFcKLargdnFqH0RjptecvyAxhyw=
 github.com/ebitengine/purego v0.7.0 h1:HPZpl61edMGCEW6XK2nsR6+7AnJ3unUxpTZBkkIXnMc=
 github.com/ebitengine/purego v0.7.0/go.mod h1:ah1In8AOtksoNK6yk5z1HTJeUkC1Ez4Wk2idgGslMwQ=
-github.com/hajimehoshi/ebiten/v2 v2.7.0 h1:qY9lQmiw2mF9vuElKajDR2tT2SwzmnPPS2W6/8WQv5o=
-github.com/hajimehoshi/ebiten/v2 v2.7.0/go.mod h1:1vjyPw+h3n30rfTOpIsbWRXSxZ0Oz1cYc6Tq/2DKoQg=
+github.com/hajimehoshi/ebiten/v2 v2.7.1 h1:v/t/IeQxd2eTtZ0QjJsUKL/fiGNeF64tYXjXbyJehzQ=
+github.com/hajimehoshi/ebiten/v2 v2.7.1/go.mod h1:1vjyPw+h3n30rfTOpIsbWRXSxZ0Oz1cYc6Tq/2DKoQg=
 github.com/jezek/xgb v1.1.1 h1:bE/r8ZZtSv7l9gk6nU0mYx51aXrvnyb44892TwSaqS4=
 github.com/jezek/xgb v1.1.1/go.mod h1:nrhwO0FX/enq75I7Y7G8iN1ubpSGZEiA3v9e9GyRFlk=
 golang.org/x/image v0.15.0 h1:kOELfmgrmJlw4Cdb7g/QGuB3CvDrXbqEIww/pNtNBm8=
