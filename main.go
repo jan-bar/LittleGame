@@ -91,7 +91,7 @@ func build() error {
     <title>Games</title>
 </head>
 <body>
-<script src="https://cdn.jsdelivr.net/gh/golang/go/misc/wasm/wasm_exec.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/golang/go/lib/wasm/wasm_exec.js"></script>
 <script>
     if (!WebAssembly.instantiateStreaming) {
         WebAssembly.instantiateStreaming = async (resp, importObject) => {

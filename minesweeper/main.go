@@ -19,9 +19,6 @@ import (
 )
 
 func main() {
-	//goland:noinspection GoDeprecation
-	rand.Seed(time.Now().Unix())
-
 	m := &mine{h: 16, w: 30, mineCnt: 99}
 	err := m.loadResources()
 	if err != nil {
